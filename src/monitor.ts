@@ -158,7 +158,7 @@ function buildStreamPlaceholderReply(streamId: string): { msgtype: "stream"; str
       id: streamId,
       finish: false,
       // Spec: "第一次回复内容为 1" works as a minimal placeholder.
-      content: "1",
+      content: "收到请稍后~",
     },
   };
 }
