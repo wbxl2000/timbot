@@ -1,0 +1,33 @@
+{
+  "name": "@clawdbot/wecom",
+  "version": "2026.1.25",
+  "type": "module",
+  "description": "Clawdbot WeCom (WeChat Work) intelligent bot channel plugin",
+  "author": "YanHaidao (VX: YanHaidao)",
+  "clawdbot": {
+    "extensions": ["./index.ts"],
+    "channel": {
+      "id": "wecom",
+      "label": "WeCom",
+      "selectionLabel": "WeCom (plugin)",
+      "detailLabel": "WeCom Bot",
+      "docsPath": "/channels/wecom",
+      "docsLabel": "wecom",
+      "blurb": "Enterprise WeCom intelligent bot (API mode) via encrypted webhooks + passive replies.",
+      "aliases": ["wechatwork", "wework", "qywx", "企微", "企业微信"],
+      "order": 85
+    },
+    "install": {
+      "npmSpec": "@clawdbot/wecom",
+      "localPath": "extensions/wecom",
+      "defaultChoice": "npm"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "clawdbot": "workspace:*"
+  },
+  "peerDependencies": {
+    "clawdbot": ">=2026.1.25"
+  }
+}
