@@ -90,7 +90,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       const useAccountPath = Boolean((cfg as ClawdbotConfig).channels?.timbot?.accounts?.[resolvedAccountId]);
       const basePath = useAccountPath ? `channels.timbot.accounts.${resolvedAccountId}.` : "channels.timbot.";
       return {
-        policy: account.config.dm?.policy ?? "pairing",
+        policy: account.config.dm?.policy ?? "open",
         allowFrom: (account.config.dm?.allowFrom ?? []).map((entry) => String(entry)),
         policyPath: `${basePath}dm.policy`,
         allowFromPath: `${basePath}dm.allowFrom`,
@@ -165,7 +165,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       lastError: runtime?.lastError ?? null,
       lastInboundAt: runtime?.lastInboundAt ?? null,
       lastOutboundAt: runtime?.lastOutboundAt ?? null,
-      dmPolicy: account.config.dm?.policy ?? "pairing",
+      dmPolicy: account.config.dm?.policy ?? "open",
     }),
   },
   gateway: {

@@ -13,6 +13,7 @@ export type TimbotAccountConfig = {
   userSig?: string;
   botAccount?: string;
   apiDomain?: string;
+  token?: string;
 
   dm?: TimbotDmConfig;
   welcomeText?: string;
@@ -33,6 +34,7 @@ export type ResolvedTimbotAccount = {
   userSig?: string;
   botAccount?: string;
   apiDomain: string;
+  token?: string;
   config: TimbotAccountConfig;
 };
 

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { ClawdbotConfig, PluginRuntime } from "clawdbot/plugin-sdk";
@@ -356,8 +357,11 @@ export async function handleTimbotWebhookRequest(
 
   const query = resolveQueryParams(req);
   const sdkAppId = query.get("SdkAppid") ?? query.get("sdkappid") ?? "";
+  const sign = query.get("Sign") ?? query.get("sign") ?? "";
+  const requestTime = query.get("RequestTime") ?? query.get("requesttime") ?? "";
 
-  console.log(`[timbot] 收到 webhook 请求: ${path}, SdkAppid=${sdkAppId}`);
+  console.log(`[timbot] 收到 webhook 请求: ${req.url}`);
+  console.log(`[timbot] URL 参数: Sign=${sign}, RequestTime=${requestTime}, SdkAppid=${sdkAppId}`);
 
   // 读取请求体
   const bodyResult = await readJsonBody(req, 1024 * 1024);
@@ -390,6 +394,36 @@ export async function handleTimbotWebhookRequest(
     // 即使未配置也返回成功，避免腾讯 IM 重试
     jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
     return true;
+  }
+
+  // 签名验证
+  if (target.account.token) {
+    // 1. 超时校验：RequestTime 与当前时间相差超过 60 秒则拒绝
+    const requestTimestamp = parseInt(requestTime, 10);
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const timeDiff = Math.abs(nowTimestamp - requestTimestamp);
+    console.log(`[timbot] 时间校验: RequestTime=${requestTimestamp}, Now=${nowTimestamp}, 差值=${timeDiff}s`);
+    if (isNaN(requestTimestamp) || timeDiff > 60) {
+      console.error(`[timbot] ❌ 请求超时! RequestTime=${requestTime}, 当前时间=${nowTimestamp}, 差值=${timeDiff}s`);
+      res.statusCode = 403;
+      res.end("Request timeout");
+      return true;
+    }
+
+    // 2. 签名校验：sha256(token + requestTime)
+    const expectedSign = createHash("sha256")
+      .update(target.account.token + requestTime)
+      .digest("hex");
+    console.log(`[timbot] 签名验证: 收到=${sign}, 预期=${expectedSign}`);
+    if (sign !== expectedSign) {
+      console.error(`[timbot] ❌ 签名验证失败! 收到: ${sign}, 预期: ${expectedSign}`);
+      res.statusCode = 403;
+      res.end("Signature verification failed");
+      return true;
+    }
+    console.log(`[timbot] ✅ 签名验证通过`);
+  } else {
+    console.log(`[timbot] ⚠️ 未配置 token，跳过签名验证`);
   }
 
   target.statusSink?.({ lastInboundAt: Date.now() });

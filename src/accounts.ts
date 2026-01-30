@@ -59,6 +59,7 @@ export function resolveTimbotAccount(params: {
   const userSig = merged.userSig?.trim() || undefined;
   const botAccount = merged.botAccount?.trim() || undefined;
   const apiDomain = merged.apiDomain?.trim() || DEFAULT_API_DOMAIN;
+  const token = merged.token?.trim() || undefined;
 
   // 配置完整需要 sdkAppId + identifier + userSig
   const configured = Boolean(sdkAppId && identifier && userSig);
@@ -96,6 +97,7 @@ export function resolveTimbotAccount(params: {
     userSig,
     botAccount,
     apiDomain,
+    token,
     config: merged,
   };
 }
