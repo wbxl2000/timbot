@@ -243,6 +243,12 @@ async function processAndReply(params: {
     return;
   }
 
+  // 过滤纯占位符消息（如 [custom]、[image] 等），这些通常是系统消息或输入状态
+  if (/^\[.+\]$/.test(rawBody.trim())) {
+    console.warn(`[timbot] ⚠️ 占位符消息，跳过处理: ${rawBody} (from: ${fromAccount})`);
+    return;
+  }
+
   console.log(`[timbot] 开始处理消息, 账号: ${account.accountId}`);
 
   const route = core.channel.routing.resolveAgentRoute({
@@ -306,6 +312,12 @@ async function processAndReply(params: {
   });
 
   console.log(`[timbot] 开始生成回复 -> ${fromAccount}`);
+  console.log(`[timbot] ========== 转发给 clawdbot 的消息 ==========`);
+  console.log(`[timbot] RawBody: ${rawBody}`);
+  console.log(`[timbot] Body: ${body}`);
+  console.log(`[timbot] SessionKey: ${ctxPayload.SessionKey}`);
+  console.log(`[timbot] From: ${ctxPayload.From}`);
+  console.log(`[timbot] ==============================================`);
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,

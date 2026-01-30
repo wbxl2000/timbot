@@ -69,13 +69,6 @@ export function resolveTimbotAccount(params: {
   const rawSdkAppId = merged.sdkAppId;
   const rawSecretKey = merged.secretKey;
   
-  console.log(`[timbot] 解析账号配置: accountId=${accountId}`);
-  console.log(`[timbot] channels.timbot 存在: ${hasChannelConfig}`);
-  if (hasChannelConfig) {
-    console.log(`[timbot] 原始配置值: sdkAppId=${rawSdkAppId ?? "[空]"}, secretKey=${rawSecretKey ? "[已配置]" : "[空]"}`);
-  }
-  console.log(`[timbot] 解析结果: configured=${configured}, enabled=${enabled}`);
-
   if (!configured && hasChannelConfig) {
     const missing: string[] = [];
     if (!sdkAppId) missing.push("sdkAppId");
