@@ -56,32 +56,30 @@ export function resolveTimbotAccount(params: {
   // 从合并后的配置中提取字段
   const sdkAppId = merged.sdkAppId?.trim() || undefined;
   const identifier = merged.identifier?.trim() || undefined;
-  const userSig = merged.userSig?.trim() || undefined;
+  const secretKey = merged.secretKey?.trim() || undefined;
   const botAccount = merged.botAccount?.trim() || undefined;
   const apiDomain = merged.apiDomain?.trim() || DEFAULT_API_DOMAIN;
   const token = merged.token?.trim() || undefined;
 
-  // 配置完整需要 sdkAppId + identifier + userSig
-  const configured = Boolean(sdkAppId && identifier && userSig);
+  // 配置完整需要 sdkAppId + secretKey（identifier 可选，默认使用 administrator）
+  const configured = Boolean(sdkAppId && secretKey);
 
   // 调试日志：显示配置来源和解析结果
   const hasChannelConfig = Boolean(timbotConfig);
   const rawSdkAppId = merged.sdkAppId;
-  const rawIdentifier = merged.identifier;
-  const rawUserSig = merged.userSig;
+  const rawSecretKey = merged.secretKey;
   
   console.log(`[timbot] 解析账号配置: accountId=${accountId}`);
   console.log(`[timbot] channels.timbot 存在: ${hasChannelConfig}`);
   if (hasChannelConfig) {
-    console.log(`[timbot] 原始配置值: sdkAppId=${rawSdkAppId ?? "[空]"}, identifier=${rawIdentifier ?? "[空]"}, userSig=${rawUserSig ?? "[空]"}`);
+    console.log(`[timbot] 原始配置值: sdkAppId=${rawSdkAppId ?? "[空]"}, secretKey=${rawSecretKey ? "[已配置]" : "[空]"}`);
   }
   console.log(`[timbot] 解析结果: configured=${configured}, enabled=${enabled}`);
 
   if (!configured && hasChannelConfig) {
     const missing: string[] = [];
     if (!sdkAppId) missing.push("sdkAppId");
-    if (!identifier) missing.push("identifier");
-    if (!userSig) missing.push("userSig");
+    if (!secretKey) missing.push("secretKey");
     if (missing.length > 0) {
       console.warn(`[timbot] ⚠️ 配置不完整，缺少: ${missing.join(", ")}`);
     }
@@ -94,7 +92,7 @@ export function resolveTimbotAccount(params: {
     configured,
     sdkAppId,
     identifier,
-    userSig,
+    secretKey,
     botAccount,
     apiDomain,
     token,

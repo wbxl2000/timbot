@@ -63,7 +63,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       deleteAccountFromConfigSection({
         cfg: cfg as ClawdbotConfig,
         sectionKey: "timbot",
-        clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "userSig", "botAccount", "apiDomain", "welcomeText"],
+        clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "secretKey", "botAccount", "apiDomain", "welcomeText"],
         accountId,
       }),
     isConfigured: (account) => account.configured,
@@ -174,7 +174,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       // 打印配置信息用于调试
       console.log(`[timbot] 启动账号: ${account.accountId}`);
       console.log(`[timbot] 配置状态: configured=${account.configured}, enabled=${account.enabled}`);
-      console.log(`[timbot] sdkAppId=${account.sdkAppId ?? "[未设置]"}, identifier=${account.identifier ?? "[未设置]"}, userSig=${account.userSig ?? "[未设置]"}`);
+      console.log(`[timbot] sdkAppId=${account.sdkAppId ?? "[未设置]"}, secretKey=${account.secretKey ? "[已配置]" : "[未设置]"}`);
       
       if (!account.configured) {
         ctx.log?.warn(`[${account.accountId}] timbot not configured; skipping webhook registration`);

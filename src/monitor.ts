@@ -5,6 +5,7 @@ import type { ClawdbotConfig, PluginRuntime } from "clawdbot/plugin-sdk";
 
 import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendMsgResponse } from "./types.js";
 import { getTimbotRuntime } from "./runtime.js";
+import { genTestUserSig } from "./debug/GenerateTestUserSig-es.js";
 
 export type TimbotRuntimeEnv = {
   log?: (message: string) => void;
@@ -85,12 +86,26 @@ function logVerbose(target: TimbotWebhookTarget, message: string): void {
   }
 }
 
+// 使用 secretKey 动态生成 userSig
+function generateUserSig(account: ResolvedTimbotAccount): string | undefined {
+  if (!account.sdkAppId || !account.secretKey) {
+    return undefined;
+  }
+  const result = genTestUserSig({
+    userID: "administrator",
+    SDKAppID: Number(account.sdkAppId),
+    SecretKey: account.secretKey,
+  });
+  return result?.userSig;
+}
+
 // 构建腾讯 IM API URL
 function buildTimbotApiUrl(account: ResolvedTimbotAccount, action: string): string {
   const domain = account.apiDomain || "console.tim.qq.com";
   const random = Math.floor(Math.random() * 4294967295);
+  const userSig = generateUserSig(account) ?? "";
   // 注意：identifier 和 userSig 都需要 URL 编码，因为可能包含特殊字符如 @ # 等
-  return `https://${domain}/v4/openim/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=administrator&usersig=${encodeURIComponent(account.userSig ?? "")}&random=${random}&contenttype=json`;
+  return `https://${domain}/v4/openim/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=administrator&usersig=${encodeURIComponent(userSig)}&random=${random}&contenttype=json`;
 }
 
 // 发送腾讯 IM 消息
@@ -110,13 +125,12 @@ export async function sendTimbotMessage(params: {
   }
 
   // 验证必需参数
-  if (!account.sdkAppId || !account.identifier || !account.userSig) {
+  if (!account.sdkAppId || !account.secretKey) {
     const missing: string[] = [];
     if (!account.sdkAppId) missing.push("sdkAppId");
-    if (!account.identifier) missing.push("identifier");
-    if (!account.userSig) missing.push("userSig");
+    if (!account.secretKey) missing.push("secretKey");
     console.log(`[timbot] 发送失败: 缺少必需参数: ${missing.join(", ")}`);
-    console.log(`[timbot] 当前账号配置: sdkAppId=${account.sdkAppId}, identifier=${account.identifier}, userSig=${account.userSig}`);
+    console.log(`[timbot] 当前账号配置: sdkAppId=${account.sdkAppId}, secretKey=${account.secretKey ? "[已配置]" : "[空]"}`);
     return { ok: false, error: `missing required params: ${missing.join(", ")}` };
   }
 

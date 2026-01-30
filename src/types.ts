@@ -10,7 +10,7 @@ export type TimbotAccountConfig = {
   webhookPath?: string;
   sdkAppId?: string;
   identifier?: string;
-  userSig?: string;
+  secretKey?: string;
   botAccount?: string;
   apiDomain?: string;
   token?: string;
@@ -31,7 +31,7 @@ export type ResolvedTimbotAccount = {
   configured: boolean;
   sdkAppId?: string;
   identifier?: string;
-  userSig?: string;
+  secretKey?: string;
   botAccount?: string;
   apiDomain: string;
   token?: string;

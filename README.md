@@ -29,8 +29,7 @@ clawdbot gateway restart
       enabled: true,
       webhookPath: "/timbot",
       sdkAppId: "YOUR_SDK_APP_ID",
-      identifier: "YOUR_ADMIN_ACCOUNT",
-      userSig: "YOUR_USER_SIG",
+      secretKey: "YOUR_SECRET_KEY",
       botAccount: "YOUR_BOT_ACCOUNT",
       apiDomain: "https://console.tim.qq.com",
       token: "YOUR_CALLBACK_TOKEN",
@@ -47,8 +46,7 @@ clawdbot gateway restart
 |--------|-------------|
 | `webhookPath` | Webhook endpoint path |
 | `sdkAppId` | Tencent Cloud IM SDK App ID |
-| `identifier` | Admin account identifier |
-| `userSig` | UserSig for authentication |
+| `secretKey` | Secret key for generating UserSig (obtained from IM Console) |
 | `botAccount` | Bot account ID |
 | `apiDomain` | Tencent IM API domain |
 | `token` | Callback token for signature verification |
@@ -58,7 +56,7 @@ clawdbot gateway restart
 ## Notes
 
 - Webhooks require public HTTPS. For security, only expose the webhook path to the internet.
-- Obtain `sdkAppId`, `identifier`, and `userSig` from the [Tencent Cloud IM Console](https://console.cloud.tencent.com/im).
+- Obtain `sdkAppId` and `secretKey` from the [Tencent Cloud IM Console](https://console.cloud.tencent.com/im). The `secretKey` is used to dynamically generate UserSig.
 - Supports multiple accounts via the `accounts` configuration.
 
 ---
@@ -94,8 +92,7 @@ clawdbot gateway restart
       enabled: true,
       webhookPath: "/timbot",
       sdkAppId: "YOUR_SDK_APP_ID",
-      identifier: "YOUR_ADMIN_ACCOUNT",
-      userSig: "YOUR_USER_SIG",
+      secretKey: "YOUR_SECRET_KEY",
       botAccount: "YOUR_BOT_ACCOUNT",
       apiDomain: "https://console.tim.qq.com",
       token: "YOUR_CALLBACK_TOKEN",
@@ -112,8 +109,7 @@ clawdbot gateway restart
 |--------|------|
 | `webhookPath` | Webhook 回调路径 |
 | `sdkAppId` | 腾讯云 IM SDK 应用 ID |
-| `identifier` | 管理员账号标识 |
-| `userSig` | 用户签名，用于身份验证 |
+| `secretKey` | 密钥，用于动态生成 UserSig（从 IM 控制台获取） |
 | `botAccount` | 机器人账号 ID |
 | `apiDomain` | 腾讯 IM API 域名 |
 | `token` | 回调签名验证 Token |
@@ -123,5 +119,5 @@ clawdbot gateway restart
 ## 说明
 
 - Webhook 必须是公网 HTTPS。出于安全考虑，建议只对外暴露 webhook 路径。
-- `sdkAppId`、`identifier` 和 `userSig` 需从[腾讯云 IM 控制台](https://console.cloud.tencent.com/im)获取。
+- `sdkAppId` 和 `secretKey` 需从[腾讯云 IM 控制台](https://console.cloud.tencent.com/im)获取。`secretKey` 用于动态生成 UserSig。
 - 支持通过 `accounts` 配置多账号。
