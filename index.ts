@@ -4,19 +4,21 @@
 import type { ClawdbotPluginApi } from "clawdbot/plugin-sdk";
 import { emptyPluginConfigSchema } from "clawdbot/plugin-sdk";
 
-import { handleWecomWebhookRequest } from "./src/monitor.js";
-import { setWecomRuntime } from "./src/runtime.js";
-import { wecomPlugin } from "./src/channel.js";
+import { handleTimbotWebhookRequest } from "./src/monitor.js";
+import { setTimbotRuntime } from "./src/runtime.js";
+import { timbotPlugin } from "./src/channel.js";
 
 const plugin = {
-  id: "wecom",
-  name: "WeCom",
-  description: "Clawdbot WeCom (WeChat Work) intelligent bot channel plugin",
+  id: "timbot",
+  name: "Tencent IM",
+  description: "Clawdbot Tencent Cloud IM intelligent bot channel plugin",
   configSchema: emptyPluginConfigSchema(),
   register(api: ClawdbotPluginApi) {
-    setWecomRuntime(api.runtime);
-    api.registerChannel({ plugin: wecomPlugin });
-    api.registerHttpHandler(handleWecomWebhookRequest);
+    console.log(`[timbot] 插件注册中...`);
+    setTimbotRuntime(api.runtime);
+    api.registerChannel({ plugin: timbotPlugin });
+    api.registerHttpHandler(handleTimbotWebhookRequest);
+    console.log(`[timbot] 插件注册完成`);
   },
 };
 

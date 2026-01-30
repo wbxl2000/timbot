@@ -1,77 +1,91 @@
-export type WecomDmConfig = {
+export type TimbotDmConfig = {
   policy?: "pairing" | "allowlist" | "open" | "disabled";
   allowFrom?: Array<string | number>;
 };
 
-export type WecomAccountConfig = {
+export type TimbotAccountConfig = {
   name?: string;
   enabled?: boolean;
 
   webhookPath?: string;
-  token?: string;
-  encodingAESKey?: string;
-  receiveId?: string;
+  sdkAppId?: string;
+  identifier?: string;
+  userSig?: string;
+  botAccount?: string;
+  apiDomain?: string;
 
-  dm?: WecomDmConfig;
+  dm?: TimbotDmConfig;
   welcomeText?: string;
 };
 
-export type WecomConfig = WecomAccountConfig & {
-  accounts?: Record<string, WecomAccountConfig>;
+export type TimbotConfig = TimbotAccountConfig & {
+  accounts?: Record<string, TimbotAccountConfig>;
   defaultAccount?: string;
 };
 
-export type ResolvedWecomAccount = {
+export type ResolvedTimbotAccount = {
   accountId: string;
   name?: string;
   enabled: boolean;
   configured: boolean;
-  token?: string;
-  encodingAESKey?: string;
-  receiveId: string;
-  config: WecomAccountConfig;
+  sdkAppId?: string;
+  identifier?: string;
+  userSig?: string;
+  botAccount?: string;
+  apiDomain: string;
+  config: TimbotAccountConfig;
 };
 
-export type WecomInboundBase = {
-  msgid?: string;
-  aibotid?: string;
-  chattype?: "single" | "group";
-  chatid?: string;
-  response_url?: string;
-  from?: { userid?: string; corpid?: string };
-  msgtype?: string;
-};
-
-export type WecomInboundText = WecomInboundBase & {
-  msgtype: "text";
-  text?: { content?: string };
-  quote?: unknown;
-};
-
-export type WecomInboundVoice = WecomInboundBase & {
-  msgtype: "voice";
-  voice?: { content?: string };
-  quote?: unknown;
-};
-
-export type WecomInboundStreamRefresh = WecomInboundBase & {
-  msgtype: "stream";
-  stream?: { id?: string };
-};
-
-export type WecomInboundEvent = WecomInboundBase & {
-  msgtype: "event";
-  create_time?: number;
-  event?: {
-    eventtype?: string;
+// 腾讯 IM 消息体元素
+export type TimbotMsgBodyElement = {
+  MsgType: string;
+  MsgContent: {
+    Text?: string;
+    // 可扩展其他消息类型的字段
     [key: string]: unknown;
   };
 };
 
-export type WecomInboundMessage =
-  | WecomInboundText
-  | WecomInboundVoice
-  | WecomInboundStreamRefresh
-  | WecomInboundEvent
-  | (WecomInboundBase & Record<string, unknown>);
+// 腾讯 IM 入站消息（Webhook 回调）
+export type TimbotInboundMessage = {
+  CallbackCommand?: string;
+  From_Account?: string;
+  To_Account?: string;
+  MsgSeq?: number;
+  MsgRandom?: number;
+  MsgTime?: number;
+  MsgKey?: string;
+  MsgId?: string;
+  OnlineOnlyFlag?: number;
+  SendMsgResult?: number;
+  ErrorInfo?: string;
+  MsgBody?: TimbotMsgBodyElement[];
+  CloudCustomData?: string;
+  EventTime?: number;
+};
 
+// 腾讯 IM 发送消息请求
+export type TimbotSendMsgRequest = {
+  SyncOtherMachine?: number;
+  From_Account?: string;
+  To_Account: string;
+  MsgSeq?: number;
+  MsgRandom: number;
+  MsgBody: TimbotMsgBodyElement[];
+  CloudCustomData?: string;
+  OfflinePushInfo?: {
+    PushFlag?: number;
+    Desc?: string;
+    Ext?: string;
+  };
+};
+
+// 腾讯 IM 发送消息响应
+export type TimbotSendMsgResponse = {
+  ActionStatus: string;
+  ErrorCode: number;
+  ErrorInfo: string;
+  MsgTime?: number;
+  MsgKey?: string;
+  MsgId?: string;
+};

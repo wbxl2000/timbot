@@ -19,18 +19,16 @@ const accountSchema = {
     name: { type: "string" },
     enabled: { type: "boolean" },
     webhookPath: { type: "string" },
-    sdkAppId: { type: "string" },
-    identifier: { type: "string" },
-    userSig: { type: "string" },
-    botAccount: { type: "string" },
-    apiDomain: { type: "string" },
+    token: { type: "string" },
+    encodingAESKey: { type: "string" },
+    receiveId: { type: "string" },
     welcomeText: { type: "string" },
     dm: dmSchema,
   },
   additionalProperties: false,
 };
 
-export const timbotConfigSchema: ChannelConfigSchema = {
+export const wecomConfigSchema: ChannelConfigSchema = {
   schema: {
     $schema: "http://json-schema.org/draft-07/schema#",
     type: "object",
@@ -38,11 +36,9 @@ export const timbotConfigSchema: ChannelConfigSchema = {
       name: { type: "string" },
       enabled: { type: "boolean" },
       webhookPath: { type: "string" },
-      sdkAppId: { type: "string" },
-      identifier: { type: "string" },
-      userSig: { type: "string" },
-      botAccount: { type: "string" },
-      apiDomain: { type: "string" },
+      token: { type: "string" },
+      encodingAESKey: { type: "string" },
+      receiveId: { type: "string" },
       welcomeText: { type: "string" },
       dm: dmSchema,
       defaultAccount: { type: "string" },

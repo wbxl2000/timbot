@@ -2,14 +2,13 @@ import type { PluginRuntime } from "clawdbot/plugin-sdk";
 
 let runtime: PluginRuntime | null = null;
 
-export function setWecomRuntime(next: PluginRuntime): void {
+export function setTimbotRuntime(next: PluginRuntime): void {
   runtime = next;
 }
 
-export function getWecomRuntime(): PluginRuntime {
+export function getTimbotRuntime(): PluginRuntime {
   if (!runtime) {
-    throw new Error("WeCom runtime not initialized");
+    throw new Error("Timbot runtime not initialized");
   }
   return runtime;
 }
-

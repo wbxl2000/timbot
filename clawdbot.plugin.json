@@ -1,6 +1,6 @@
 {
-  "id": "wecom",
-  "channels": ["wecom"],
+  "id": "timbot",
+  "channels": ["timbot"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

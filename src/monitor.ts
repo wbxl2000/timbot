@@ -1,43 +1,25 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import crypto from "node:crypto";
 
 import type { ClawdbotConfig, PluginRuntime } from "clawdbot/plugin-sdk";
 
-import type { ResolvedWecomAccount, WecomInboundMessage } from "./types.js";
-import { decryptWecomEncrypted, encryptWecomPlaintext, verifyWecomSignature, computeWecomMsgSignature } from "./crypto.js";
-import { getWecomRuntime } from "./runtime.js";
+import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendMsgResponse } from "./types.js";
+import { getTimbotRuntime } from "./runtime.js";
 
-export type WecomRuntimeEnv = {
+export type TimbotRuntimeEnv = {
   log?: (message: string) => void;
   error?: (message: string) => void;
 };
 
-type WecomWebhookTarget = {
-  account: ResolvedWecomAccount;
+type TimbotWebhookTarget = {
+  account: ResolvedTimbotAccount;
   config: ClawdbotConfig;
-  runtime: WecomRuntimeEnv;
+  runtime: TimbotRuntimeEnv;
   core: PluginRuntime;
   path: string;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
 };
 
-type StreamState = {
-  streamId: string;
-  msgid?: string;
-  createdAt: number;
-  updatedAt: number;
-  started: boolean;
-  finished: boolean;
-  error?: string;
-  content: string;
-};
-
-const webhookTargets = new Map<string, WecomWebhookTarget[]>();
-const streams = new Map<string, StreamState>();
-const msgidToStreamId = new Map<string, string>();
-
-const STREAM_TTL_MS = 10 * 60 * 1000;
-const STREAM_MAX_BYTES = 20_480;
+const webhookTargets = new Map<string, TimbotWebhookTarget[]>();
 
 function normalizeWebhookPath(raw: string): string {
   const trimmed = raw.trim();
@@ -47,31 +29,9 @@ function normalizeWebhookPath(raw: string): string {
   return withSlash;
 }
 
-function pruneStreams(): void {
-  const cutoff = Date.now() - STREAM_TTL_MS;
-  for (const [id, state] of streams.entries()) {
-    if (state.updatedAt < cutoff) {
-      streams.delete(id);
-    }
-  }
-  for (const [msgid, id] of msgidToStreamId.entries()) {
-    if (!streams.has(id)) {
-      msgidToStreamId.delete(msgid);
-    }
-  }
-}
-
-function truncateUtf8Bytes(text: string, maxBytes: number): string {
-  const buf = Buffer.from(text, "utf8");
-  if (buf.length <= maxBytes) return text;
-  const slice = buf.subarray(buf.length - maxBytes);
-  return slice.toString("utf8");
-}
-
 function jsonOk(res: ServerResponse, body: unknown): void {
   res.statusCode = 200;
-  // WeCom's reference implementation returns the encrypted JSON as text/plain.
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(body));
 }
 
@@ -106,30 +66,9 @@ async function readJsonBody(req: IncomingMessage, maxBytes: number) {
   });
 }
 
-function buildEncryptedJsonReply(params: {
-  account: ResolvedWecomAccount;
-  plaintextJson: unknown;
-  nonce: string;
-  timestamp: string;
-}): { encrypt: string; msgsignature: string; timestamp: string; nonce: string } {
-  const plaintext = JSON.stringify(params.plaintextJson ?? {});
-  const encrypt = encryptWecomPlaintext({
-    encodingAESKey: params.account.encodingAESKey ?? "",
-    receiveId: params.account.receiveId ?? "",
-    plaintext,
-  });
-  const msgsignature = computeWecomMsgSignature({
-    token: params.account.token ?? "",
-    timestamp: params.timestamp,
-    nonce: params.nonce,
-    encrypt,
-  });
-  return {
-    encrypt,
-    msgsignature,
-    timestamp: params.timestamp,
-    nonce: params.nonce,
-  };
+function resolvePath(req: IncomingMessage): string {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  return normalizeWebhookPath(url.pathname || "/");
 }
 
 function resolveQueryParams(req: IncomingMessage): URLSearchParams {
@@ -137,105 +76,170 @@ function resolveQueryParams(req: IncomingMessage): URLSearchParams {
   return url.searchParams;
 }
 
-function resolvePath(req: IncomingMessage): string {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  return normalizeWebhookPath(url.pathname || "/");
-}
-
-function resolveSignatureParam(params: URLSearchParams): string {
-  return (
-    params.get("msg_signature") ??
-    params.get("msgsignature") ??
-    params.get("signature") ??
-    ""
-  );
-}
-
-function buildStreamPlaceholderReply(streamId: string): { msgtype: "stream"; stream: { id: string; finish: boolean; content: string } } {
-  return {
-    msgtype: "stream",
-    stream: {
-      id: streamId,
-      finish: false,
-      // Spec: "第一次回复内容为 1" works as a minimal placeholder.
-      content: "收到请稍后~",
-    },
-  };
-}
-
-function buildStreamReplyFromState(state: StreamState): { msgtype: "stream"; stream: { id: string; finish: boolean; content: string } } {
-  const content = truncateUtf8Bytes(state.content, STREAM_MAX_BYTES);
-  return {
-    msgtype: "stream",
-    stream: {
-      id: state.streamId,
-      finish: state.finished,
-      content,
-    },
-  };
-}
-
-function createStreamId(): string {
-  return crypto.randomBytes(16).toString("hex");
-}
-
-function logVerbose(target: WecomWebhookTarget, message: string): void {
+function logVerbose(target: TimbotWebhookTarget, message: string): void {
   const core = target.core;
   const should = core.logging?.shouldLogVerbose?.() ?? false;
   if (should) {
-    target.runtime.log?.(`[wecom] ${message}`);
+    target.runtime.log?.(`[timbot] ${message}`);
   }
 }
 
-function parseWecomPlainMessage(raw: string): WecomInboundMessage {
-  const parsed = JSON.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== "object") {
-    return {};
+// 构建腾讯 IM API URL
+function buildTimbotApiUrl(account: ResolvedTimbotAccount, action: string): string {
+  const domain = account.apiDomain || "console.tim.qq.com";
+  const random = Math.floor(Math.random() * 4294967295);
+  // 注意：identifier 和 userSig 都需要 URL 编码，因为可能包含特殊字符如 @ # 等
+  return `https://${domain}/v4/openim/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=administrator&usersig=${encodeURIComponent(account.userSig ?? "")}&random=${random}&contenttype=json`;
+}
+
+// 发送腾讯 IM 消息
+export async function sendTimbotMessage(params: {
+  account: ResolvedTimbotAccount;
+  toAccount: string;
+  text: string;
+  fromAccount?: string;
+}): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  const { account, toAccount, text, fromAccount } = params;
+
+  console.log(`[timbot] 准备发送消息 -> ${toAccount}, 内容长度: ${text.length}`);
+
+  if (!account.configured) {
+    console.log(`[timbot] 发送失败: 账号未配置`);
+    return { ok: false, error: "account not configured" };
   }
-  return parsed as WecomInboundMessage;
+
+  // 验证必需参数
+  if (!account.sdkAppId || !account.identifier || !account.userSig) {
+    const missing: string[] = [];
+    if (!account.sdkAppId) missing.push("sdkAppId");
+    if (!account.identifier) missing.push("identifier");
+    if (!account.userSig) missing.push("userSig");
+    console.log(`[timbot] 发送失败: 缺少必需参数: ${missing.join(", ")}`);
+    console.log(`[timbot] 当前账号配置: sdkAppId=${account.sdkAppId}, identifier=${account.identifier}, userSig=${account.userSig}`);
+    return { ok: false, error: `missing required params: ${missing.join(", ")}` };
+  }
+
+  const url = buildTimbotApiUrl(account, "sendmsg");
+  const msgRandom = Math.floor(Math.random() * 4294967295);
+
+  const body: Record<string, unknown> = {
+    SyncOtherMachine: 2, // 不同步到发送方
+    To_Account: toAccount,
+    MsgRandom: msgRandom,
+    MsgBody: [
+      {
+        MsgType: "TIMTextElem",
+        MsgContent: { Text: text.length > 100 ? text.slice(0, 100) + "..." : text },
+      },
+    ],
+  };
+
+  if (fromAccount) {
+    body.From_Account = fromAccount;
+  }
+
+  // 打印完整请求信息
+  console.log(`[timbot] ========== 发送请求 ==========`);
+  console.log(`[timbot] URL: ${url}`);
+  console.log(`[timbot] Method: POST`);
+  console.log(`[timbot] Headers: Content-Type: application/json`);
+  console.log(`[timbot] Body: ${JSON.stringify(body, null, 2)}`);
+  console.log(`[timbot] ================================`);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, MsgBody: [{ MsgType: "TIMTextElem", MsgContent: { Text: text } }] }), // 使用完整文本
+    });
+
+    console.log(`[timbot] HTTP 响应状态: ${response.status} ${response.statusText}`);
+    
+    const resultText = await response.text();
+    console.log(`[timbot] 响应内容: ${resultText}`);
+    
+    let result: TimbotSendMsgResponse;
+    try {
+      result = JSON.parse(resultText) as TimbotSendMsgResponse;
+    } catch {
+      console.log(`[timbot] 响应解析失败，非 JSON 格式`);
+      return { ok: false, error: `Invalid response: ${resultText.slice(0, 200)}` };
+    }
+
+    if (result.ErrorCode !== 0) {
+      console.log(`[timbot] 发送失败: ErrorCode=${result.ErrorCode}, ErrorInfo=${result.ErrorInfo}`);
+      return { ok: false, error: result.ErrorInfo || `ErrorCode: ${result.ErrorCode}` };
+    }
+
+    console.log(`[timbot] 发送成功 -> ${toAccount}, messageId: ${result.MsgKey}`);
+    return { ok: true, messageId: result.MsgKey };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.log(`[timbot] 发送异常: ${errMsg}`);
+    return { ok: false, error: errMsg };
+  }
 }
 
-async function waitForStreamContent(streamId: string, maxWaitMs: number): Promise<void> {
-  if (maxWaitMs <= 0) return;
-  const startedAt = Date.now();
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      const state = streams.get(streamId);
-      if (!state) return resolve();
-      if (state.error || state.finished || state.content.trim()) return resolve();
-      if (Date.now() - startedAt >= maxWaitMs) return resolve();
-      setTimeout(tick, 25);
-    };
-    tick();
-  });
+// 从 MsgBody 提取文本内容
+function extractTextFromMsgBody(msgBody?: Array<{ MsgType: string; MsgContent: { Text?: string } }>): string {
+  if (!msgBody || !Array.isArray(msgBody)) return "";
+
+  const texts: string[] = [];
+  for (const elem of msgBody) {
+    if (elem.MsgType === "TIMTextElem" && elem.MsgContent?.Text) {
+      texts.push(elem.MsgContent.Text);
+    } else if (elem.MsgType === "TIMCustomElem") {
+      texts.push("[custom]");
+    } else if (elem.MsgType === "TIMImageElem") {
+      texts.push("[image]");
+    } else if (elem.MsgType === "TIMSoundElem") {
+      texts.push("[voice]");
+    } else if (elem.MsgType === "TIMFileElem") {
+      texts.push("[file]");
+    } else if (elem.MsgType === "TIMVideoFileElem") {
+      texts.push("[video]");
+    } else if (elem.MsgType === "TIMFaceElem") {
+      texts.push("[face]");
+    } else if (elem.MsgType === "TIMLocationElem") {
+      texts.push("[location]");
+    }
+  }
+
+  return texts.join("\n");
 }
 
-async function startAgentForStream(params: {
-  target: WecomWebhookTarget;
-  accountId: string;
-  msg: WecomInboundMessage;
-  streamId: string;
+// 处理消息并回复
+async function processAndReply(params: {
+  target: TimbotWebhookTarget;
+  msg: TimbotInboundMessage;
 }): Promise<void> {
-  const { target, msg, streamId } = params;
+  const { target, msg } = params;
   const core = target.core;
   const config = target.config;
   const account = target.account;
 
-  const userid = msg.from?.userid?.trim() || "unknown";
-  const chatType = msg.chattype === "group" ? "group" : "direct";
-  const chatId = msg.chattype === "group" ? (msg.chatid?.trim() || "unknown") : userid;
-  const rawBody = buildInboundBody(msg);
+  const fromAccount = msg.From_Account?.trim() || "unknown";
+  const rawBody = extractTextFromMsgBody(msg.MsgBody);
+
+  console.log(`[timbot] 收到消息 <- ${fromAccount}, msgKey: ${msg.MsgKey}, 内容: ${rawBody.slice(0, 100)}${rawBody.length > 100 ? "..." : ""}`);
+
+  if (!rawBody.trim()) {
+    console.log(`[timbot] 消息内容为空，跳过处理`);
+    return;
+  }
+
+  console.log(`[timbot] 开始处理消息, 账号: ${account.accountId}`);
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config,
-    channel: "wecom",
+    channel: "timbot",
     accountId: account.accountId,
-    peer: { kind: chatType === "group" ? "group" : "dm", id: chatId },
+    peer: { kind: "dm", id: fromAccount },
   });
 
-  logVerbose(target, `starting agent processing (streamId=${streamId}, agentId=${route.agentId}, peerKind=${chatType}, peerId=${chatId})`);
+  logVerbose(target, `processing message from ${fromAccount}, agentId=${route.agentId}`);
 
-  const fromLabel = chatType === "group" ? `group:${chatId}` : `user:${userid}`;
+  const fromLabel = `user:${fromAccount}`;
   const storePath = core.channel.session.resolveStorePath(config.session?.store, {
     agentId: route.agentId,
   });
@@ -245,7 +249,7 @@ async function startAgentForStream(params: {
     sessionKey: route.sessionKey,
   });
   const body = core.channel.reply.formatAgentEnvelope({
-    channel: "WeCom",
+    channel: "TIMBOT",
     from: fromLabel,
     previousTimestamp,
     envelope: envelopeOptions,
@@ -256,19 +260,19 @@ async function startAgentForStream(params: {
     Body: body,
     RawBody: rawBody,
     CommandBody: rawBody,
-    From: chatType === "group" ? `wecom:group:${chatId}` : `wecom:${userid}`,
-    To: `wecom:${chatId}`,
+    From: `timbot:${fromAccount}`,
+    To: `timbot:${account.botAccount || msg.To_Account || "bot"}`,
     SessionKey: route.sessionKey,
     AccountId: route.accountId,
-    ChatType: chatType,
+    ChatType: "direct",
     ConversationLabel: fromLabel,
-    SenderName: userid,
-    SenderId: userid,
-    Provider: "wecom",
-    Surface: "wecom",
-    MessageSid: msg.msgid,
-    OriginatingChannel: "wecom",
-    OriginatingTo: `wecom:${chatId}`,
+    SenderName: fromAccount,
+    SenderId: fromAccount,
+    Provider: "timbot",
+    Surface: "timbot",
+    MessageSid: msg.MsgKey,
+    OriginatingChannel: "timbot",
+    OriginatingTo: `timbot:${fromAccount}`,
   });
 
   await core.channel.session.recordInboundSession({
@@ -276,15 +280,17 @@ async function startAgentForStream(params: {
     sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
     ctx: ctxPayload,
     onRecordError: (err) => {
-      target.runtime.error?.(`wecom: failed updating session meta: ${String(err)}`);
+      target.runtime.error?.(`timbot: failed updating session meta: ${String(err)}`);
     },
   });
 
   const tableMode = core.channel.text.resolveMarkdownTableMode({
     cfg: config,
-    channel: "wecom",
+    channel: "timbot",
     accountId: account.accountId,
   });
+
+  console.log(`[timbot] 开始生成回复 -> ${fromAccount}`);
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
@@ -292,73 +298,31 @@ async function startAgentForStream(params: {
     dispatcherOptions: {
       deliver: async (payload) => {
         const text = core.channel.text.convertMarkdownTables(payload.text ?? "", tableMode);
-        const current = streams.get(streamId);
-        if (!current) return;
-        const nextText = current.content
-          ? `${current.content}\n\n${text}`.trim()
-          : text.trim();
-        current.content = truncateUtf8Bytes(nextText, STREAM_MAX_BYTES);
-        current.updatedAt = Date.now();
-        target.statusSink?.({ lastOutboundAt: Date.now() });
+        if (!text.trim()) return;
+
+        const result = await sendTimbotMessage({
+          account,
+          toAccount: fromAccount,
+          text,
+          fromAccount: account.botAccount,
+        });
+
+        if (!result.ok) {
+          target.runtime.error?.(`[${account.accountId}] timbot send failed: ${result.error}`);
+        } else {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        }
       },
       onError: (err, info) => {
-        target.runtime.error?.(`[${account.accountId}] wecom ${info.kind} reply failed: ${String(err)}`);
+        target.runtime.error?.(`[${account.accountId}] timbot ${info.kind} reply failed: ${String(err)}`);
       },
     },
   });
 
-  const current = streams.get(streamId);
-  if (current) {
-    current.finished = true;
-    current.updatedAt = Date.now();
-  }
+  console.log(`[timbot] 消息处理完成 <- ${fromAccount}`);
 }
 
-function buildInboundBody(msg: WecomInboundMessage): string {
-  const msgtype = String(msg.msgtype ?? "").toLowerCase();
-  if (msgtype === "text") {
-    const content = (msg as any).text?.content;
-    return typeof content === "string" ? content : "";
-  }
-  if (msgtype === "voice") {
-    const content = (msg as any).voice?.content;
-    return typeof content === "string" ? content : "[voice]";
-  }
-  if (msgtype === "mixed") {
-    const items = (msg as any).mixed?.msg_item;
-    if (Array.isArray(items)) {
-      return items
-        .map((item: any) => {
-          const t = String(item?.msgtype ?? "").toLowerCase();
-          if (t === "text") return String(item?.text?.content ?? "");
-          if (t === "image") return `[image] ${String(item?.image?.url ?? "").trim()}`.trim();
-          return `[${t || "item"}]`;
-        })
-        .filter((part: string) => Boolean(part && part.trim()))
-        .join("\n");
-    }
-    return "[mixed]";
-  }
-  if (msgtype === "image") {
-    const url = String((msg as any).image?.url ?? "").trim();
-    return url ? `[image] ${url}` : "[image]";
-  }
-  if (msgtype === "file") {
-    const url = String((msg as any).file?.url ?? "").trim();
-    return url ? `[file] ${url}` : "[file]";
-  }
-  if (msgtype === "event") {
-    const eventtype = String((msg as any).event?.eventtype ?? "").trim();
-    return eventtype ? `[event] ${eventtype}` : "[event]";
-  }
-  if (msgtype === "stream") {
-    const id = String((msg as any).stream?.id ?? "").trim();
-    return id ? `[stream_refresh] ${id}` : "[stream_refresh]";
-  }
-  return msgtype ? `[${msgtype}]` : "";
-}
-
-export function registerWecomWebhookTarget(target: WecomWebhookTarget): () => void {
+export function registerTimbotWebhookTarget(target: TimbotWebhookTarget): () => void {
   const key = normalizeWebhookPath(target.path);
   const normalizedTarget = { ...target, path: key };
   const existing = webhookTargets.get(key) ?? [];
@@ -371,276 +335,92 @@ export function registerWecomWebhookTarget(target: WecomWebhookTarget): () => vo
   };
 }
 
-export async function handleWecomWebhookRequest(
+export async function handleTimbotWebhookRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<boolean> {
-  pruneStreams();
-
   const path = resolvePath(req);
   const targets = webhookTargets.get(path);
   if (!targets || targets.length === 0) return false;
 
-  const query = resolveQueryParams(req);
-  const timestamp = query.get("timestamp") ?? "";
-  const nonce = query.get("nonce") ?? "";
-  const signature = resolveSignatureParam(query);
-
   const firstTarget = targets[0]!;
-  logVerbose(firstTarget, `incoming ${req.method} request on ${path} (timestamp=${timestamp}, nonce=${nonce}, signature=${signature})`);
 
-  if (req.method === "GET") {
-    const echostr = query.get("echostr") ?? "";
-    if (!timestamp || !nonce || !signature || !echostr) {
-      logVerbose(firstTarget, "GET request missing query params");
-      res.statusCode = 400;
-      res.end("missing query params");
-      return true;
-    }
-    const target = targets.find((candidate) => {
-      if (!candidate.account.configured || !candidate.account.token) return false;
-      const ok = verifyWecomSignature({
-        token: candidate.account.token,
-        timestamp,
-        nonce,
-        encrypt: echostr,
-        signature,
-      });
-      if (!ok) {
-        logVerbose(candidate, `signature verification failed for echostr (token=${candidate.account.token?.slice(0, 4)}...)`);
-      }
-      return ok;
-    });
-    if (!target || !target.account.encodingAESKey) {
-      logVerbose(firstTarget, "no matching target for GET signature");
-      res.statusCode = 401;
-      res.end("unauthorized");
-      return true;
-    }
-    try {
-      const plain = decryptWecomEncrypted({
-        encodingAESKey: target.account.encodingAESKey,
-        receiveId: target.account.receiveId,
-        encrypt: echostr,
-      });
-      logVerbose(target, "GET echostr decrypted successfully");
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.end(plain);
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logVerbose(target, `GET decrypt failed: ${msg}`);
-      res.statusCode = 400;
-      res.end(msg || "decrypt failed");
-      return true;
-    }
-  }
-
+  // 只处理 POST 请求
   if (req.method !== "POST") {
+    console.log(`[timbot] 收到非 POST 请求: ${req.method} ${path}`);
     res.statusCode = 405;
-    res.setHeader("Allow", "GET, POST");
+    res.setHeader("Allow", "POST");
     res.end("Method Not Allowed");
     return true;
   }
 
-  if (!timestamp || !nonce || !signature) {
-    logVerbose(firstTarget, "POST request missing query params");
-    res.statusCode = 400;
-    res.end("missing query params");
+  const query = resolveQueryParams(req);
+  const sdkAppId = query.get("SdkAppid") ?? query.get("sdkappid") ?? "";
+
+  console.log(`[timbot] 收到 webhook 请求: ${path}, SdkAppid=${sdkAppId}`);
+
+  // 读取请求体
+  const bodyResult = await readJsonBody(req, 1024 * 1024);
+  if (!bodyResult.ok) {
+    console.log(`[timbot] 请求体读取失败: ${bodyResult.error}`);
+    res.statusCode = bodyResult.error === "payload too large" ? 413 : 400;
+    res.end(bodyResult.error ?? "invalid payload");
     return true;
   }
 
-  const body = await readJsonBody(req, 1024 * 1024);
-  if (!body.ok) {
-    logVerbose(firstTarget, `POST body read failed: ${body.error}`);
-    res.statusCode = body.error === "payload too large" ? 413 : 400;
-    res.end(body.error ?? "invalid payload");
-    return true;
-  }
-  const record = body.value && typeof body.value === "object" ? (body.value as Record<string, unknown>) : null;
-  const encrypt = record ? String(record.encrypt ?? record.Encrypt ?? "") : "";
-  if (!encrypt) {
-    logVerbose(firstTarget, "POST request missing encrypt field in body");
-    res.statusCode = 400;
-    res.end("missing encrypt");
-    return true;
-  }
+  const msg = bodyResult.value as TimbotInboundMessage;
+  
+  // 打印完整的回调内容
+  console.log(`[timbot] 收到回调内容: ${JSON.stringify(msg, null, 2)}`);
 
-  // Find the first target that validates the signature.
+  // 根据 SdkAppid 或 To_Account 匹配目标账号
   const target = targets.find((candidate) => {
-    if (!candidate.account.token) return false;
-    const ok = verifyWecomSignature({
-      token: candidate.account.token,
-      timestamp,
-      nonce,
-      encrypt,
-      signature,
-    });
-    if (!ok) {
-      logVerbose(candidate, `signature verification failed for POST (token=${candidate.account.token?.slice(0, 4)}...)`);
+    if (!candidate.account.configured) return false;
+    // 如果 URL 带了 SdkAppid，校验是否匹配
+    if (sdkAppId && candidate.account.sdkAppId !== sdkAppId) return false;
+    // 如果配置了 botAccount，校验 To_Account 是否匹配
+    if (candidate.account.botAccount && msg.To_Account) {
+      return candidate.account.botAccount === msg.To_Account;
     }
-    return ok;
-  });
-  if (!target) {
-    logVerbose(firstTarget, "no matching target for POST signature");
-    res.statusCode = 401;
-    res.end("unauthorized");
+    return true;
+  }) ?? firstTarget;
+
+  if (!target.account.configured) {
+    console.log(`[timbot] 账号 ${target.account.accountId} 未配置，跳过处理`);
+    // 即使未配置也返回成功，避免腾讯 IM 重试
+    jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
     return true;
   }
 
-  if (!target.account.configured || !target.account.token || !target.account.encodingAESKey) {
-    logVerbose(target, "target found but not fully configured");
-    res.statusCode = 500;
-    res.end("wecom not configured");
-    return true;
-  }
-
-  let plain: string;
-  try {
-    plain = decryptWecomEncrypted({
-      encodingAESKey: target.account.encodingAESKey,
-      receiveId: target.account.receiveId,
-      encrypt,
-    });
-    logVerbose(target, `decrypted POST message: ${plain}`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logVerbose(target, `POST decrypt failed: ${msg}`);
-    res.statusCode = 400;
-    res.end(msg || "decrypt failed");
-    return true;
-  }
-
-  const msg = parseWecomPlainMessage(plain);
   target.statusSink?.({ lastInboundAt: Date.now() });
 
-  const msgtype = String(msg.msgtype ?? "").toLowerCase();
-  const msgid = msg.msgid ? String(msg.msgid) : undefined;
+  const callbackCommand = msg.CallbackCommand ?? "";
+  console.log(`[timbot] 回调类型: ${callbackCommand}, from: ${msg.From_Account}, msgKey: ${msg.MsgKey}`);
 
-  // Stream refresh callback: reply with current state (if any).
-  if (msgtype === "stream") {
-    const streamId = String((msg as any).stream?.id ?? "").trim();
-    const state = streamId ? streams.get(streamId) : undefined;
-    if (state) logVerbose(target, `stream refresh streamId=${streamId} started=${state.started} finished=${state.finished}`);
-    const reply = state ? buildStreamReplyFromState(state) : buildStreamReplyFromState({
-      streamId: streamId || "unknown",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      started: true,
-      finished: true,
-      content: "",
-    });
-    jsonOk(res, buildEncryptedJsonReply({
-      account: target.account,
-      plaintextJson: reply,
-      nonce,
-      timestamp,
-    }));
+  // 立即返回成功响应给腾讯 IM
+  jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
+
+  // 只处理机器人消息回调
+  if (callbackCommand !== "Bot.OnC2CMessage") {
+    console.log(`[timbot] 非 Bot.OnC2CMessage 回调，跳过: ${callbackCommand}`);
     return true;
   }
 
-  // Dedupe: if we already created a stream for this msgid, return placeholder again.
-  if (msgid && msgidToStreamId.has(msgid)) {
-    const streamId = msgidToStreamId.get(msgid) ?? "";
-    const reply = buildStreamPlaceholderReply(streamId);
-    jsonOk(res, buildEncryptedJsonReply({
-      account: target.account,
-      plaintextJson: reply,
-      nonce,
-      timestamp,
-    }));
-    return true;
-  }
-
-  // enter_chat welcome event: optionally reply with text (allowed by spec).
-  if (msgtype === "event") {
-    const eventtype = String((msg as any).event?.eventtype ?? "").toLowerCase();
-    if (eventtype === "enter_chat") {
-      const welcome = target.account.config.welcomeText?.trim();
-      const reply = welcome
-        ? { msgtype: "text", text: { content: welcome } }
-        : {};
-      jsonOk(res, buildEncryptedJsonReply({
-        account: target.account,
-        plaintextJson: reply,
-        nonce,
-        timestamp,
-      }));
-      return true;
-    }
-
-    // For other events, reply empty to avoid timeouts.
-    jsonOk(res, buildEncryptedJsonReply({
-      account: target.account,
-      plaintextJson: {},
-      nonce,
-      timestamp,
-    }));
-    return true;
-  }
-
-  // Default: respond with a stream placeholder and compute the actual reply async.
-  const streamId = createStreamId();
-  if (msgid) msgidToStreamId.set(msgid, streamId);
-  streams.set(streamId, {
-    streamId,
-    msgid,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    started: false,
-    finished: false,
-    content: "",
-  });
-
-  // Kick off agent processing in the background.
+  // 获取运行时并异步处理消息
   let core: PluginRuntime | null = null;
   try {
-    core = getWecomRuntime();
+    core = getTimbotRuntime();
   } catch (err) {
-    // If runtime is not ready, we can't process the agent, but we should still
-    // return the placeholder if possible, or handle it as a background error.
-    logVerbose(target, `runtime not ready, skipping agent processing: ${String(err)}`);
+    console.log(`[timbot] 运行时未就绪: ${String(err)}`);
+    return true;
   }
 
   if (core) {
-    streams.get(streamId)!.started = true;
-    const enrichedTarget: WecomWebhookTarget = { ...target, core };
-    startAgentForStream({ target: enrichedTarget, accountId: target.account.accountId, msg, streamId }).catch((err) => {
-      const state = streams.get(streamId);
-      if (state) {
-        state.error = err instanceof Error ? err.message : String(err);
-        state.content = state.content || `Error: ${state.error}`;
-        state.finished = true;
-        state.updatedAt = Date.now();
-      }
-      target.runtime.error?.(`[${target.account.accountId}] wecom agent failed: ${String(err)}`);
+    const enrichedTarget: TimbotWebhookTarget = { ...target, core };
+    processAndReply({ target: enrichedTarget, msg }).catch((err) => {
+      target.runtime.error?.(`[${target.account.accountId}] timbot agent failed: ${String(err)}`);
     });
-  } else {
-    // In tests or uninitialized state, we might not have a core.
-    // We mark it as finished to avoid hanging, but don't set an error content
-    // immediately if we want to return the placeholder "1".
-    const state = streams.get(streamId);
-    if (state) {
-      state.finished = true;
-      state.updatedAt = Date.now();
-    }
   }
 
-  // Try to include a first chunk in the initial response (matches WeCom demo behavior).
-  // If nothing is ready quickly, fall back to the placeholder "1".
-  await waitForStreamContent(streamId, 800);
-  const state = streams.get(streamId);
-  const initialReply = state && (state.content.trim() || state.error)
-    ? buildStreamReplyFromState(state)
-    : buildStreamPlaceholderReply(streamId);
-  jsonOk(res, buildEncryptedJsonReply({
-    account: target.account,
-    plaintextJson: initialReply,
-    nonce,
-    timestamp,
-  }));
-
-  logVerbose(target, `accepted msgtype=${msgtype || "unknown"} msgid=${msgid || "none"} streamId=${streamId}`);
   return true;
 }

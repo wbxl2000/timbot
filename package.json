@@ -1,25 +1,25 @@
 {
-  "name": "@clawdbot/wecom",
-  "version": "2026.1.25",
+  "name": "@clawdbot/timbot",
+  "version": "2026.1.30",
   "type": "module",
-  "description": "Clawdbot WeCom (WeChat Work) intelligent bot channel plugin",
-  "author": "YanHaidao (VX: YanHaidao)",
+  "description": "Clawdbot Tencent Cloud IM intelligent bot channel plugin",
+  "author": "longyuqi@tencent.com",
   "clawdbot": {
     "extensions": ["./index.ts"],
     "channel": {
-      "id": "wecom",
-      "label": "WeCom",
-      "selectionLabel": "WeCom (plugin)",
-      "detailLabel": "WeCom Bot",
-      "docsPath": "/channels/wecom",
-      "docsLabel": "wecom",
-      "blurb": "Enterprise WeCom intelligent bot (API mode) via encrypted webhooks + passive replies.",
-      "aliases": ["wechatwork", "wework", "qywx", "企微", "企业微信"],
+      "id": "timbot",
+      "label": "Tencent IM",
+      "selectionLabel": "Tencent IM (plugin)",
+      "detailLabel": "Tencent Cloud IM Bot",
+      "docsPath": "/channels/timbot",
+      "docsLabel": "timbot",
+      "blurb": "Tencent Cloud IM bot via webhooks + REST API.",
+      "aliases": ["tencentim", "腾讯im", "即时通信"],
       "order": 85
     },
     "install": {
-      "npmSpec": "@clawdbot/wecom",
-      "localPath": "extensions/wecom",
+      "npmSpec": "@clawdbot/timbot",
+      "localPath": "extensions/timbot",
       "defaultChoice": "npm"
     }
   },

@@ -10,51 +10,51 @@ import {
   setAccountEnabledInConfigSection,
 } from "clawdbot/plugin-sdk";
 
-import { listTimbotAccountIds, resolveDefaultTimbotAccountId, resolveTimbotAccount } from "./accounts.js";
-import { timbotConfigSchema } from "./config-schema.js";
-import type { ResolvedTimbotAccount } from "./types.js";
-import { registerTimbotWebhookTarget, sendTimbotMessage } from "./monitor.js";
+import { listWecomAccountIds, resolveDefaultWecomAccountId, resolveWecomAccount } from "./accounts.js";
+import { wecomConfigSchema } from "./config-schema.js";
+import type { ResolvedWecomAccount } from "./types.js";
+import { registerWecomWebhookTarget } from "./monitor.js";
 
 const meta = {
-  id: "timbot",
-  label: "Tencent IM",
-  selectionLabel: "Tencent IM (plugin)",
-  docsPath: "/channels/timbot",
-  docsLabel: "timbot",
-  blurb: "Tencent Cloud IM bot via webhooks + REST API.",
-  aliases: ["tencentim", "腾讯im", "即时通信"],
+  id: "wecom",
+  label: "WeCom",
+  selectionLabel: "WeCom (plugin)",
+  docsPath: "/channels/wecom",
+  docsLabel: "wecom",
+  blurb: "Enterprise WeCom intelligent bot (API mode) via encrypted webhooks + passive replies.",
+  aliases: ["wechatwork", "wework", "qywx", "企微", "企业微信"],
   order: 85,
   quickstartAllowFrom: true,
 };
 
-function normalizeTimbotMessagingTarget(raw: string): string | undefined {
+function normalizeWecomMessagingTarget(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
-  return trimmed.replace(/^(timbot|tencentim):/i, "").trim() || undefined;
+  return trimmed.replace(/^(wecom|wechatwork|wework|qywx):/i, "").trim() || undefined;
 }
 
-export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
-  id: "timbot",
+export const wecomPlugin: ChannelPlugin<ResolvedWecomAccount> = {
+  id: "wecom",
   meta,
   capabilities: {
-    chatTypes: ["direct"],
+    chatTypes: ["direct", "group"],
     media: false,
     reactions: false,
     threads: false,
     polls: false,
     nativeCommands: false,
-    blockStreaming: false,
+    blockStreaming: true,
   },
-  reload: { configPrefixes: ["channels.timbot"] },
-  configSchema: timbotConfigSchema,
+  reload: { configPrefixes: ["channels.wecom"] },
+  configSchema: wecomConfigSchema,
   config: {
-    listAccountIds: (cfg) => listTimbotAccountIds(cfg as ClawdbotConfig),
-    resolveAccount: (cfg, accountId) => resolveTimbotAccount({ cfg: cfg as ClawdbotConfig, accountId }),
-    defaultAccountId: (cfg) => resolveDefaultTimbotAccountId(cfg as ClawdbotConfig),
+    listAccountIds: (cfg) => listWecomAccountIds(cfg as ClawdbotConfig),
+    resolveAccount: (cfg, accountId) => resolveWecomAccount({ cfg: cfg as ClawdbotConfig, accountId }),
+    defaultAccountId: (cfg) => resolveDefaultWecomAccountId(cfg as ClawdbotConfig),
     setAccountEnabled: ({ cfg, accountId, enabled }) =>
       setAccountEnabledInConfigSection({
         cfg: cfg as ClawdbotConfig,
-        sectionKey: "timbot",
+        sectionKey: "wecom",
         accountId,
         enabled,
         allowTopLevel: true,
@@ -62,8 +62,8 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
     deleteAccount: ({ cfg, accountId }) =>
       deleteAccountFromConfigSection({
         cfg: cfg as ClawdbotConfig,
-        sectionKey: "timbot",
-        clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "userSig", "botAccount", "apiDomain", "welcomeText"],
+        sectionKey: "wecom",
+        clearBaseFields: ["name", "webhookPath", "token", "encodingAESKey", "receiveId", "welcomeText"],
         accountId,
       }),
     isConfigured: (account) => account.configured,
@@ -72,10 +72,10 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       name: account.name,
       enabled: account.enabled,
       configured: account.configured,
-      webhookPath: account.config.webhookPath ?? "/timbot",
+      webhookPath: account.config.webhookPath ?? "/wecom",
     }),
     resolveAllowFrom: ({ cfg, accountId }) => {
-      const account = resolveTimbotAccount({ cfg: cfg as ClawdbotConfig, accountId });
+      const account = resolveWecomAccount({ cfg: cfg as ClawdbotConfig, accountId });
       return (account.config.dm?.allowFrom ?? []).map((entry) => String(entry));
     },
     formatAllowFrom: ({ allowFrom }) =>
@@ -87,48 +87,42 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   security: {
     resolveDmPolicy: ({ cfg, accountId, account }) => {
       const resolvedAccountId = accountId ?? account.accountId ?? DEFAULT_ACCOUNT_ID;
-      const useAccountPath = Boolean((cfg as ClawdbotConfig).channels?.timbot?.accounts?.[resolvedAccountId]);
-      const basePath = useAccountPath ? `channels.timbot.accounts.${resolvedAccountId}.` : "channels.timbot.";
+      const useAccountPath = Boolean((cfg as ClawdbotConfig).channels?.wecom?.accounts?.[resolvedAccountId]);
+      const basePath = useAccountPath ? `channels.wecom.accounts.${resolvedAccountId}.` : "channels.wecom.";
       return {
         policy: account.config.dm?.policy ?? "pairing",
         allowFrom: (account.config.dm?.allowFrom ?? []).map((entry) => String(entry)),
         policyPath: `${basePath}dm.policy`,
         allowFromPath: `${basePath}dm.allowFrom`,
-        approveHint: formatPairingApproveHint("timbot"),
+        approveHint: formatPairingApproveHint("wecom"),
         normalizeEntry: (raw) => raw.trim().toLowerCase(),
       };
     },
   },
   groups: {
+    // WeCom bots are usually mention-gated by the platform in groups already.
     resolveRequireMention: () => true,
   },
   threading: {
     resolveReplyToMode: () => "off",
   },
   messaging: {
-    normalizeTarget: normalizeTimbotMessagingTarget,
+    normalizeTarget: normalizeWecomMessagingTarget,
     targetResolver: {
       looksLikeId: (raw) => Boolean(raw.trim()),
-      hint: "<userid>",
+      hint: "<userid|chatid>",
     },
   },
   outbound: {
     deliveryMode: "direct",
     chunkerMode: "text",
-    textChunkLimit: 10000,
-    sendText: async ({ account, target, text }) => {
-      const result = await sendTimbotMessage({
-        account,
-        toAccount: target,
-        text,
-        fromAccount: account.botAccount,
-      });
-
+    textChunkLimit: 20480,
+    sendText: async () => {
       return {
-        channel: "timbot",
-        ok: result.ok,
-        messageId: result.messageId ?? "",
-        error: result.error ? new Error(result.error) : undefined,
+        channel: "wecom",
+        ok: false,
+        messageId: "",
+        error: new Error("WeCom intelligent bot only supports replying within callbacks (no standalone sendText)."),
       };
     },
   },
@@ -158,7 +152,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       name: account.name,
       enabled: account.enabled,
       configured: account.configured,
-      webhookPath: account.config.webhookPath ?? "/timbot",
+      webhookPath: account.config.webhookPath ?? "/wecom",
       running: runtime?.running ?? false,
       lastStartAt: runtime?.lastStartAt ?? null,
       lastStopAt: runtime?.lastStopAt ?? null,
@@ -171,27 +165,23 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   gateway: {
     startAccount: async (ctx) => {
       const account = ctx.account;
-      // 打印配置信息用于调试
-      console.log(`[timbot] 启动账号: ${account.accountId}`);
-      console.log(`[timbot] 配置状态: configured=${account.configured}, enabled=${account.enabled}`);
-      console.log(`[timbot] sdkAppId=${account.sdkAppId ?? "[未设置]"}, identifier=${account.identifier ?? "[未设置]"}, userSig=${account.userSig ?? "[未设置]"}`);
-      
       if (!account.configured) {
-        ctx.log?.warn(`[${account.accountId}] timbot not configured; skipping webhook registration`);
+        ctx.log?.warn(`[${account.accountId}] wecom not configured; skipping webhook registration`);
         ctx.setStatus({ accountId: account.accountId, running: false, configured: false });
         return { stop: () => {} };
       }
-      const path = (account.config.webhookPath ?? "/timbot").trim();
-      const unregister = registerTimbotWebhookTarget({
+      const path = (account.config.webhookPath ?? "/wecom").trim();
+      const unregister = registerWecomWebhookTarget({
         account,
         config: ctx.cfg as ClawdbotConfig,
         runtime: ctx.runtime,
+        // The HTTP handler resolves the active PluginRuntime via getWecomRuntime().
+        // The stored target only needs to be decrypt/verify-capable.
         core: ({} as unknown) as any,
         path,
         statusSink: (patch) => ctx.setStatus({ accountId: ctx.accountId, ...patch }),
       });
-      ctx.log?.info(`[${account.accountId}] timbot webhook registered at ${path}`);
-      console.log(`[timbot] webhook 注册成功, 账号: ${account.accountId}, 路径: ${path}`);
+      ctx.log?.info(`[${account.accountId}] wecom webhook registered at ${path}`);
       ctx.setStatus({
         accountId: account.accountId,
         running: true,
