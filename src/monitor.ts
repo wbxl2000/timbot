@@ -6,6 +6,7 @@ import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
 import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendMsgResponse } from "./types.js";
 import { getTimbotRuntime } from "./runtime.js";
 import { genTestUserSig } from "./debug/GenerateTestUserSig-es.js";
+import { LOG_PREFIX, logSimple } from "./logger.js";
 
 export type TimbotRuntimeEnv = {
   log?: (message: string) => void;
@@ -22,6 +23,34 @@ type TimbotWebhookTarget = {
 };
 
 const webhookTargets = new Map<string, TimbotWebhookTarget[]>();
+
+// ============ 日志工具（带 target） ============
+
+/** 带 target 的日志（有 runtime 回调） */
+function log(target: TimbotWebhookTarget, level: "info" | "warn" | "error", message: string): void {
+  const full = `${LOG_PREFIX} ${message}`;
+  if (level === "error") {
+    target.runtime.error?.(full);
+    console.error(full);
+  } else if (level === "warn") {
+    console.warn(full);
+  } else {
+    target.runtime.log?.(full);
+    console.log(full);
+  }
+}
+
+/** verbose 日志（仅在 --verbose 时输出） */
+function logVerbose(target: TimbotWebhookTarget, message: string): void {
+  const should = target.core.logging?.shouldLogVerbose?.() ?? false;
+  if (should) {
+    const full = `${LOG_PREFIX} ${message}`;
+    target.runtime.log?.(full);
+    console.debug(full);
+  }
+}
+
+// ============ 工具函数 ============
 
 function normalizeWebhookPath(raw: string): string {
   const trimmed = raw.trim();
@@ -78,14 +107,6 @@ function resolveQueryParams(req: IncomingMessage): URLSearchParams {
   return url.searchParams;
 }
 
-function logVerbose(target: TimbotWebhookTarget, message: string): void {
-  const core = target.core;
-  const should = core.logging?.shouldLogVerbose?.() ?? false;
-  if (should) {
-    target.runtime.log?.(`[timbot] ${message}`);
-  }
-}
-
 // 使用 secretKey 动态生成 userSig
 function generateUserSig(account: ResolvedTimbotAccount): string | undefined {
   if (!account.sdkAppId || !account.secretKey) {
@@ -114,13 +135,20 @@ export async function sendTimbotMessage(params: {
   toAccount: string;
   text: string;
   fromAccount?: string;
+  target?: TimbotWebhookTarget;
 }): Promise<{ ok: boolean; messageId?: string; error?: string }> {
-  const { account, toAccount, text, fromAccount } = params;
+  const { account, toAccount, text, fromAccount, target } = params;
 
-  console.log(`[timbot] 准备发送消息 -> ${toAccount}, 内容长度: ${text.length}`);
+  // 辅助函数：根据是否有 target 选择日志方式
+  const info = (msg: string) => target ? log(target, "info", msg) : logSimple("info", msg);
+  const warn = (msg: string) => target ? log(target, "warn", msg) : logSimple("warn", msg);
+  const error = (msg: string) => target ? log(target, "error", msg) : logSimple("error", msg);
+  const verbose = (msg: string) => target ? logVerbose(target, msg) : undefined;
+
+  verbose(`准备发送消息 -> ${toAccount}, 内容长度: ${text.length}`);
 
   if (!account.configured) {
-    console.log(`[timbot] 发送失败: 账号未配置`);
+    warn("发送失败: 账号未配置");
     return { ok: false, error: "account not configured" };
   }
 
@@ -129,8 +157,8 @@ export async function sendTimbotMessage(params: {
     const missing: string[] = [];
     if (!account.sdkAppId) missing.push("sdkAppId");
     if (!account.secretKey) missing.push("secretKey");
-    console.log(`[timbot] 发送失败: 缺少必需参数: ${missing.join(", ")}`);
-    console.log(`[timbot] 当前账号配置: sdkAppId=${account.sdkAppId}, secretKey=${account.secretKey ? "[已配置]" : "[空]"}`);
+    error(`发送失败: 缺少必需参数: ${missing.join(", ")}`);
+    verbose(`当前账号配置: sdkAppId=${account.sdkAppId}, secretKey=${account.secretKey ? "[已配置]" : "[空]"}`);
     return { ok: false, error: `missing required params: ${missing.join(", ")}` };
   }
 
@@ -153,13 +181,9 @@ export async function sendTimbotMessage(params: {
     body.From_Account = fromAccount;
   }
 
-  // 打印完整请求信息
-  console.log(`[timbot] ========== 发送请求 ==========`);
-  console.log(`[timbot] URL: ${url}`);
-  console.log(`[timbot] Method: POST`);
-  console.log(`[timbot] Headers: Content-Type: application/json`);
-  console.log(`[timbot] Body: ${JSON.stringify(body, null, 2)}`);
-  console.log(`[timbot] ================================`);
+  // verbose 级别打印完整请求信息
+  verbose(`发送请求 URL: ${url}`);
+  verbose(`发送请求 Body: ${JSON.stringify(body)}`);
 
   try {
     const response = await fetch(url, {
@@ -168,29 +192,29 @@ export async function sendTimbotMessage(params: {
       body: JSON.stringify({ ...body, MsgBody: [{ MsgType: "TIMTextElem", MsgContent: { Text: text } }] }), // 使用完整文本
     });
 
-    console.log(`[timbot] HTTP 响应状态: ${response.status} ${response.statusText}`);
+    verbose(`HTTP 响应状态: ${response.status} ${response.statusText}`);
     
     const resultText = await response.text();
-    console.log(`[timbot] 响应内容: ${resultText}`);
+    verbose(`响应内容: ${resultText}`);
     
     let result: TimbotSendMsgResponse;
     try {
       result = JSON.parse(resultText) as TimbotSendMsgResponse;
     } catch {
-      console.log(`[timbot] 响应解析失败，非 JSON 格式`);
+      error("响应解析失败，非 JSON 格式");
       return { ok: false, error: `Invalid response: ${resultText.slice(0, 200)}` };
     }
 
     if (result.ErrorCode !== 0) {
-      console.log(`[timbot] 发送失败: ErrorCode=${result.ErrorCode}, ErrorInfo=${result.ErrorInfo}`);
+      error(`发送失败: ErrorCode=${result.ErrorCode}, ErrorInfo=${result.ErrorInfo}`);
       return { ok: false, error: result.ErrorInfo || `ErrorCode: ${result.ErrorCode}` };
     }
 
-    console.log(`[timbot] 发送成功 -> ${toAccount}, messageId: ${result.MsgKey}`);
+    info(`发送成功 -> ${toAccount}, messageId: ${result.MsgKey}`);
     return { ok: true, messageId: result.MsgKey };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.log(`[timbot] 发送异常: ${errMsg}`);
+    error(`发送异常: ${errMsg}`);
     return { ok: false, error: errMsg };
   }
 }
@@ -236,20 +260,21 @@ async function processAndReply(params: {
   const fromAccount = msg.From_Account?.trim() || "unknown";
   const rawBody = extractTextFromMsgBody(msg.MsgBody);
 
-  console.log(`[timbot] 收到消息 <- ${fromAccount}, msgKey: ${msg.MsgKey}, 内容: ${rawBody.slice(0, 100)}${rawBody.length > 100 ? "..." : ""}`);
+  log(target, "info", `收到消息 <- ${fromAccount}, msgKey: ${msg.MsgKey}`);
+  logVerbose(target, `消息内容: ${rawBody.slice(0, 200)}${rawBody.length > 200 ? "..." : ""}`);
 
   if (!rawBody.trim()) {
-    console.log(`[timbot] 消息内容为空，跳过处理`);
+    log(target, "warn", "消息内容为空，跳过处理");
     return;
   }
 
   // 过滤纯占位符消息（如 [custom]、[image] 等），这些通常是系统消息或输入状态
   if (/^\[.+\]$/.test(rawBody.trim())) {
-    console.warn(`[timbot] ⚠️ 占位符消息，跳过处理: ${rawBody} (from: ${fromAccount})`);
+    log(target, "warn", `占位符消息，跳过处理: ${rawBody} (from: ${fromAccount})`);
     return;
   }
 
-  console.log(`[timbot] 开始处理消息, 账号: ${account.accountId}`);
+  logVerbose(target, `开始处理消息, 账号: ${account.accountId}`);
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg: config,
@@ -311,13 +336,8 @@ async function processAndReply(params: {
     accountId: account.accountId,
   });
 
-  console.log(`[timbot] 开始生成回复 -> ${fromAccount}`);
-  console.log(`[timbot] ========== 转发给 OpenClaw 的消息 ==========`);
-  console.log(`[timbot] RawBody: ${rawBody}`);
-  console.log(`[timbot] Body: ${body}`);
-  console.log(`[timbot] SessionKey: ${ctxPayload.SessionKey}`);
-  console.log(`[timbot] From: ${ctxPayload.From}`);
-  console.log(`[timbot] ==============================================`);
+  logVerbose(target, `开始生成回复 -> ${fromAccount}`);
+  logVerbose(target, `转发给 OpenClaw: RawBody=${rawBody.slice(0, 100)}, SessionKey=${ctxPayload.SessionKey}, From=${ctxPayload.From}`);
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
@@ -332,6 +352,7 @@ async function processAndReply(params: {
           toAccount: fromAccount,
           text,
           fromAccount: account.botAccount,
+          target,
         });
 
         if (!result.ok) {
@@ -346,7 +367,7 @@ async function processAndReply(params: {
     },
   });
 
-  console.log(`[timbot] 消息处理完成 <- ${fromAccount}`);
+  log(target, "info", `消息处理完成 <- ${fromAccount}`);
 }
 
 export function registerTimbotWebhookTarget(target: TimbotWebhookTarget): () => void {
@@ -374,7 +395,7 @@ export async function handleTimbotWebhookRequest(
 
   // 只处理 POST 请求
   if (req.method !== "POST") {
-    console.log(`[timbot] 收到非 POST 请求: ${req.method} ${path}`);
+    logSimple("warn", `收到非 POST 请求: ${req.method} ${path}`);
     res.statusCode = 405;
     res.setHeader("Allow", "POST");
     res.end("Method Not Allowed");
@@ -386,22 +407,18 @@ export async function handleTimbotWebhookRequest(
   const sign = query.get("Sign") ?? query.get("sign") ?? "";
   const requestTime = query.get("RequestTime") ?? query.get("requesttime") ?? "";
 
-  console.log(`[timbot] 收到 webhook 请求: ${req.url}`);
-  console.log(`[timbot] URL 参数: Sign=${sign}, RequestTime=${requestTime}, SdkAppid=${sdkAppId}`);
+  logSimple("info", `收到 webhook 请求: ${path}`);
 
   // 读取请求体
   const bodyResult = await readJsonBody(req, 1024 * 1024);
   if (!bodyResult.ok) {
-    console.log(`[timbot] 请求体读取失败: ${bodyResult.error}`);
+    logSimple("error", `请求体读取失败: ${bodyResult.error}`);
     res.statusCode = bodyResult.error === "payload too large" ? 413 : 400;
     res.end(bodyResult.error ?? "invalid payload");
     return true;
   }
 
   const msg = bodyResult.value as TimbotInboundMessage;
-  
-  // 打印完整的回调内容
-  console.log(`[timbot] 收到回调内容: ${JSON.stringify(msg, null, 2)}`);
 
   // 根据 SdkAppid 或 To_Account 匹配目标账号
   const target = targets.find((candidate) => {
@@ -416,7 +433,7 @@ export async function handleTimbotWebhookRequest(
   }) ?? firstTarget;
 
   if (!target.account.configured) {
-    console.log(`[timbot] 账号 ${target.account.accountId} 未配置，跳过处理`);
+    logSimple("warn", `账号 ${target.account.accountId} 未配置，跳过处理`);
     // 即使未配置也返回成功，避免腾讯 IM 重试
     jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
     return true;
@@ -428,9 +445,8 @@ export async function handleTimbotWebhookRequest(
     const requestTimestamp = parseInt(requestTime, 10);
     const nowTimestamp = Math.floor(Date.now() / 1000);
     const timeDiff = Math.abs(nowTimestamp - requestTimestamp);
-    console.log(`[timbot] 时间校验: RequestTime=${requestTimestamp}, Now=${nowTimestamp}, 差值=${timeDiff}s`);
     if (isNaN(requestTimestamp) || timeDiff > 60) {
-      console.error(`[timbot] ❌ 请求超时! RequestTime=${requestTime}, 当前时间=${nowTimestamp}, 差值=${timeDiff}s`);
+      logSimple("error", `请求超时: RequestTime=${requestTime}, 当前时间=${nowTimestamp}, 差值=${timeDiff}s`);
       res.statusCode = 403;
       res.end("Request timeout");
       return true;
@@ -440,29 +456,24 @@ export async function handleTimbotWebhookRequest(
     const expectedSign = createHash("sha256")
       .update(target.account.token + requestTime)
       .digest("hex");
-    console.log(`[timbot] 签名验证: 收到=${sign}, 预期=${expectedSign}`);
     if (sign !== expectedSign) {
-      console.error(`[timbot] ❌ 签名验证失败! 收到: ${sign}, 预期: ${expectedSign}`);
+      logSimple("error", `签名验证失败: 收到=${sign.slice(0, 16)}..., 预期=${expectedSign.slice(0, 16)}...`);
       res.statusCode = 403;
       res.end("Signature verification failed");
       return true;
     }
-    console.log(`[timbot] ✅ 签名验证通过`);
-  } else {
-    console.log(`[timbot] ⚠️ 未配置 token，跳过签名验证`);
   }
 
   target.statusSink?.({ lastInboundAt: Date.now() });
 
   const callbackCommand = msg.CallbackCommand ?? "";
-  console.log(`[timbot] 回调类型: ${callbackCommand}, from: ${msg.From_Account}, msgKey: ${msg.MsgKey}`);
 
   // 立即返回成功响应给腾讯 IM
   jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
 
   // 只处理机器人消息回调
   if (callbackCommand !== "Bot.OnC2CMessage") {
-    console.log(`[timbot] 非 Bot.OnC2CMessage 回调，跳过: ${callbackCommand}`);
+    logSimple("info", `非 Bot.OnC2CMessage 回调，跳过: ${callbackCommand}`);
     return true;
   }
 
@@ -471,7 +482,7 @@ export async function handleTimbotWebhookRequest(
   try {
     core = getTimbotRuntime();
   } catch (err) {
-    console.log(`[timbot] 运行时未就绪: ${String(err)}`);
+    logSimple("error", `运行时未就绪: ${String(err)}`);
     return true;
   }
 

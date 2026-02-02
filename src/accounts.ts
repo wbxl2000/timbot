@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
 import type { ResolvedTimbotAccount, TimbotAccountConfig, TimbotConfig } from "./types.js";
+import { logSimple } from "./logger.js";
 
 const DEFAULT_API_DOMAIN = "console.tim.qq.com";
 
@@ -64,17 +65,13 @@ export function resolveTimbotAccount(params: {
   // 配置完整需要 sdkAppId + secretKey（identifier 可选，默认使用 administrator）
   const configured = Boolean(sdkAppId && secretKey);
 
-  // 调试日志：显示配置来源和解析结果
-  const hasChannelConfig = Boolean(timbotConfig);
-  const rawSdkAppId = merged.sdkAppId;
-  const rawSecretKey = merged.secretKey;
-  
-  if (!configured && hasChannelConfig) {
+  // 配置不完整时输出警告
+  if (!configured && Boolean(timbotConfig)) {
     const missing: string[] = [];
     if (!sdkAppId) missing.push("sdkAppId");
     if (!secretKey) missing.push("secretKey");
     if (missing.length > 0) {
-      console.warn(`[timbot] ⚠️ 配置不完整，缺少: ${missing.join(", ")}`);
+      logSimple("warn", `配置不完整，缺少: ${missing.join(", ")}`);
     }
   }
 

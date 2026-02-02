@@ -172,11 +172,11 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   gateway: {
     startAccount: async (ctx) => {
       const account = ctx.account;
-      // 打印配置信息用于调试
-      console.log(`[timbot] 启动账号: ${account.accountId}`);
-      console.log(`[timbot] 配置状态: configured=${account.configured}, enabled=${account.enabled}`);
-      console.log(`[timbot] sdkAppId=${account.sdkAppId ?? "[未设置]"}, secretKey=${account.secretKey ? "[已配置]" : "[未设置]"}`);
-      
+
+      // verbose 级别打印配置信息
+      ctx.log?.debug(`启动账号: ${account.accountId}, configured=${account.configured}, enabled=${account.enabled}`);
+      ctx.log?.debug(`sdkAppId=${account.sdkAppId ?? "[未设置]"}, secretKey=${account.secretKey ? "[已配置]" : "[未设置]"}`);
+
       if (!account.configured) {
         ctx.log?.warn(`[${account.accountId}] timbot not configured; skipping webhook registration`);
         ctx.setStatus({ accountId: account.accountId, running: false, configured: false });
@@ -192,7 +192,6 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
         statusSink: (patch) => ctx.setStatus({ accountId: ctx.accountId, ...patch }),
       });
       ctx.log?.info(`[${account.accountId}] timbot webhook registered at ${path}`);
-      console.log(`[timbot] webhook 注册成功, 账号: ${account.accountId}, 路径: ${path}`);
       ctx.setStatus({
         accountId: account.accountId,
         running: true,
@@ -203,6 +202,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       return {
         stop: () => {
           unregister();
+          ctx.log?.info(`[${account.accountId}] timbot webhook unregistered`);
           ctx.setStatus({
             accountId: account.accountId,
             running: false,
