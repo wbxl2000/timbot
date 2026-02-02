@@ -1,14 +1,14 @@
 import type {
   ChannelAccountSnapshot,
   ChannelPlugin,
-  ClawdbotConfig,
-} from "clawdbot/plugin-sdk";
+  OpenClawConfig,
+} from "openclaw/plugin-sdk";
 import {
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
   formatPairingApproveHint,
   setAccountEnabledInConfigSection,
-} from "clawdbot/plugin-sdk";
+} from "openclaw/plugin-sdk";
 
 import { listTimbotAccountIds, resolveDefaultTimbotAccountId, resolveTimbotAccount } from "./accounts.js";
 import { timbotConfigSchema } from "./config-schema.js";
@@ -19,6 +19,7 @@ const meta = {
   id: "timbot",
   label: "Tencent IM",
   selectionLabel: "Tencent IM (plugin)",
+  detailLabel: "Tencent Cloud IM Bot",
   docsPath: "/channels/timbot",
   docsLabel: "timbot",
   blurb: "Tencent Cloud IM bot via webhooks + REST API.",
@@ -48,12 +49,12 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   reload: { configPrefixes: ["channels.timbot"] },
   configSchema: timbotConfigSchema,
   config: {
-    listAccountIds: (cfg) => listTimbotAccountIds(cfg as ClawdbotConfig),
-    resolveAccount: (cfg, accountId) => resolveTimbotAccount({ cfg: cfg as ClawdbotConfig, accountId }),
-    defaultAccountId: (cfg) => resolveDefaultTimbotAccountId(cfg as ClawdbotConfig),
+    listAccountIds: (cfg) => listTimbotAccountIds(cfg as OpenClawConfig),
+    resolveAccount: (cfg, accountId) => resolveTimbotAccount({ cfg: cfg as OpenClawConfig, accountId }),
+    defaultAccountId: (cfg) => resolveDefaultTimbotAccountId(cfg as OpenClawConfig),
     setAccountEnabled: ({ cfg, accountId, enabled }) =>
       setAccountEnabledInConfigSection({
-        cfg: cfg as ClawdbotConfig,
+        cfg: cfg as OpenClawConfig,
         sectionKey: "timbot",
         accountId,
         enabled,
@@ -61,7 +62,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       }),
     deleteAccount: ({ cfg, accountId }) =>
       deleteAccountFromConfigSection({
-        cfg: cfg as ClawdbotConfig,
+        cfg: cfg as OpenClawConfig,
         sectionKey: "timbot",
         clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "secretKey", "botAccount", "apiDomain", "welcomeText"],
         accountId,
@@ -75,7 +76,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       webhookPath: account.config.webhookPath ?? "/timbot",
     }),
     resolveAllowFrom: ({ cfg, accountId }) => {
-      const account = resolveTimbotAccount({ cfg: cfg as ClawdbotConfig, accountId });
+      const account = resolveTimbotAccount({ cfg: cfg as OpenClawConfig, accountId });
       return (account.config.dm?.allowFrom ?? []).map((entry) => String(entry));
     },
     formatAllowFrom: ({ allowFrom }) =>
@@ -87,7 +88,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   security: {
     resolveDmPolicy: ({ cfg, accountId, account }) => {
       const resolvedAccountId = accountId ?? account.accountId ?? DEFAULT_ACCOUNT_ID;
-      const useAccountPath = Boolean((cfg as ClawdbotConfig).channels?.timbot?.accounts?.[resolvedAccountId]);
+      const useAccountPath = Boolean((cfg as OpenClawConfig).channels?.timbot?.accounts?.[resolvedAccountId]);
       const basePath = useAccountPath ? `channels.timbot.accounts.${resolvedAccountId}.` : "channels.timbot.";
       return {
         policy: account.config.dm?.policy ?? "open",
@@ -184,7 +185,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       const path = (account.config.webhookPath ?? "/timbot").trim();
       const unregister = registerTimbotWebhookTarget({
         account,
-        config: ctx.cfg as ClawdbotConfig,
+        config: ctx.cfg as OpenClawConfig,
         runtime: ctx.runtime,
         core: ({} as unknown) as any,
         path,

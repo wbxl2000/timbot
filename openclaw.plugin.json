@@ -1,5 +1,8 @@
 {
   "id": "timbot",
+  "name": "Tencent IM",
+  "description": "Clawdbot Tencent Cloud IM intelligent bot channel plugin",
+  "version": "2026.1.30",
   "channels": ["timbot"],
   "configSchema": {
     "type": "object",

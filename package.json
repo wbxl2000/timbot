@@ -4,8 +4,11 @@
   "type": "module",
   "description": "Clawdbot Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
-  "clawdbot": {
-    "extensions": ["./index.ts"],
+  "scripts": {
+    "build": "tsc && mkdir -p dist/src/debug && cp src/debug/GenerateTestUserSig-es.js src/debug/lib-generate-test-usersig-es.min.js dist/src/debug/"
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
     "channel": {
       "id": "timbot",
       "label": "Tencent IM",
@@ -24,7 +27,11 @@
     }
   },
   "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
   "peerDependencies": {
-    "clawdbot": ">=2026.1.25"
+    "openclaw": ">=2026.1.30"
   }
 }

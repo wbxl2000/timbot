@@ -1,23 +1,23 @@
-import type { ClawdbotConfig } from "clawdbot/plugin-sdk";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "clawdbot/plugin-sdk";
+import type { OpenClawConfig } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
 import type { ResolvedTimbotAccount, TimbotAccountConfig, TimbotConfig } from "./types.js";
 
 const DEFAULT_API_DOMAIN = "console.tim.qq.com";
 
-function listConfiguredAccountIds(cfg: ClawdbotConfig): string[] {
+function listConfiguredAccountIds(cfg: OpenClawConfig): string[] {
   const accounts = (cfg.channels?.timbot as TimbotConfig | undefined)?.accounts;
   if (!accounts || typeof accounts !== "object") return [];
   return Object.keys(accounts).filter(Boolean);
 }
 
-export function listTimbotAccountIds(cfg: ClawdbotConfig): string[] {
+export function listTimbotAccountIds(cfg: OpenClawConfig): string[] {
   const ids = listConfiguredAccountIds(cfg);
   if (ids.length === 0) return [DEFAULT_ACCOUNT_ID];
   return ids.sort((a, b) => a.localeCompare(b));
 }
 
-export function resolveDefaultTimbotAccountId(cfg: ClawdbotConfig): string {
+export function resolveDefaultTimbotAccountId(cfg: OpenClawConfig): string {
   const timbotConfig = cfg.channels?.timbot as TimbotConfig | undefined;
   if (timbotConfig?.defaultAccount?.trim()) return timbotConfig.defaultAccount.trim();
   const ids = listTimbotAccountIds(cfg);
@@ -26,7 +26,7 @@ export function resolveDefaultTimbotAccountId(cfg: ClawdbotConfig): string {
 }
 
 function resolveAccountConfig(
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
   accountId: string,
 ): TimbotAccountConfig | undefined {
   const accounts = (cfg.channels?.timbot as TimbotConfig | undefined)?.accounts;
@@ -34,7 +34,7 @@ function resolveAccountConfig(
   return accounts[accountId] as TimbotAccountConfig | undefined;
 }
 
-function mergeTimbotAccountConfig(cfg: ClawdbotConfig, accountId: string): TimbotAccountConfig {
+function mergeTimbotAccountConfig(cfg: OpenClawConfig, accountId: string): TimbotAccountConfig {
   const raw = (cfg.channels?.timbot ?? {}) as TimbotConfig;
   const { accounts: _ignored, defaultAccount: _ignored2, ...base } = raw;
   const account = resolveAccountConfig(cfg, accountId) ?? {};
@@ -44,7 +44,7 @@ function mergeTimbotAccountConfig(cfg: ClawdbotConfig, accountId: string): Timbo
 }
 
 export function resolveTimbotAccount(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   accountId?: string | null;
 }): ResolvedTimbotAccount {
   const accountId = normalizeAccountId(params.accountId);
@@ -93,7 +93,7 @@ export function resolveTimbotAccount(params: {
   };
 }
 
-export function listEnabledTimbotAccounts(cfg: ClawdbotConfig): ResolvedTimbotAccount[] {
+export function listEnabledTimbotAccounts(cfg: OpenClawConfig): ResolvedTimbotAccount[] {
   return listTimbotAccountIds(cfg)
     .map((accountId) => resolveTimbotAccount({ cfg, accountId }))
     .filter((account) => account.enabled);

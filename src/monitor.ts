@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { ClawdbotConfig, PluginRuntime } from "clawdbot/plugin-sdk";
+import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
 
 import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendMsgResponse } from "./types.js";
 import { getTimbotRuntime } from "./runtime.js";
@@ -14,7 +14,7 @@ export type TimbotRuntimeEnv = {
 
 type TimbotWebhookTarget = {
   account: ResolvedTimbotAccount;
-  config: ClawdbotConfig;
+  config: OpenClawConfig;
   runtime: TimbotRuntimeEnv;
   core: PluginRuntime;
   path: string;
@@ -312,7 +312,7 @@ async function processAndReply(params: {
   });
 
   console.log(`[timbot] 开始生成回复 -> ${fromAccount}`);
-  console.log(`[timbot] ========== 转发给 clawdbot 的消息 ==========`);
+  console.log(`[timbot] ========== 转发给 OpenClaw 的消息 ==========`);
   console.log(`[timbot] RawBody: ${rawBody}`);
   console.log(`[timbot] Body: ${body}`);
   console.log(`[timbot] SessionKey: ${ctxPayload.SessionKey}`);

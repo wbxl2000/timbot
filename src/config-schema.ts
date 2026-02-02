@@ -1,4 +1,4 @@
-import type { ChannelConfigSchema } from "clawdbot/plugin-sdk";
+import type { ChannelConfigSchema } from "openclaw/plugin-sdk";
 
 const dmSchema = {
   type: "object",
