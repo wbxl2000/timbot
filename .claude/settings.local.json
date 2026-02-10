@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(pnpm build:*)",
+      "Bash(openclaw plugins:*)",
+      "Bash(chmod:*)",
+      "Bash(find:*)",
+      "Bash(bash:*)",
+      "Bash(node test-onboarding.cjs:*)",
+      "Bash(node test-flow.mjs:*)",
+      "WebFetch(domain:mp.weixin.qq.com)",
+      "Bash(textutil:*)"
+    ]
+  }
+}

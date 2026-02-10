@@ -1,9 +1,23 @@
 {
-  "name": "@clawdbot/timbot",
-  "version": "2026.1.30",
+  "name": "timbot",
+  "version": "2026.2.10",
   "type": "module",
-  "description": "Clawdbot Tencent Cloud IM intelligent bot channel plugin",
+  "description": "OpenClaw Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "openclaw.plugin.json"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "tencent-im",
+    "timbot",
+    "chatbot"
+  ],
   "scripts": {
     "build": "tsc && mkdir -p dist/src/debug && cp src/debug/GenerateTestUserSig-es.js src/debug/lib-generate-test-usersig-es.min.js dist/src/debug/"
   },
@@ -21,7 +35,7 @@
       "order": 85
     },
     "install": {
-      "npmSpec": "@clawdbot/timbot",
+      "npmSpec": "timbot",
       "localPath": "extensions/timbot",
       "defaultChoice": "npm"
     }

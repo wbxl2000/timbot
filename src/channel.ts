@@ -12,6 +12,7 @@ import {
 
 import { listTimbotAccountIds, resolveDefaultTimbotAccountId, resolveTimbotAccount } from "./accounts.js";
 import { timbotConfigSchema } from "./config-schema.js";
+import { timbotOnboardingAdapter } from "./onboarding.js";
 import type { ResolvedTimbotAccount } from "./types.js";
 import { registerTimbotWebhookTarget, sendTimbotMessage } from "./monitor.js";
 
@@ -37,6 +38,7 @@ function normalizeTimbotMessagingTarget(raw: string): string | undefined {
 export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   id: "timbot",
   meta,
+  onboarding: timbotOnboardingAdapter,
   capabilities: {
     chatTypes: ["direct"],
     media: false,

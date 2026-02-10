@@ -1,3 +1,6 @@
 docs/
 dist/
 node_modules/
+*.tgz
+extensions/
+openclaw-src/
