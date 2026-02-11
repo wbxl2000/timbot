@@ -97,13 +97,12 @@ async function promptTimbotAllowFrom(params: {
 async function noteTimbotCredentialHelp(prompter: WizardPrompter): Promise<void> {
   await prompter.note(
     [
-      "1) Go to Tencent Cloud IM Console: https://console.cloud.tencent.com/im",
-      "2) Create an app or select an existing one",
-      "3) Get SDKAppID from the app overview page",
-      "4) Get SecretKey from the app overview page (click Show to reveal)",
-      "5) Go to Callback Configuration → select your app",
-      "   Set callback URL to http://<your-server>:18789/timbot",
-      "   Enable authentication and set a Token",
+      "You'll need 3 values from Tencent Cloud IM Console:",
+      "",
+      "• SDKAppID & SecretKey → https://console.cloud.tencent.com/im",
+      "• Callback Token       → https://console.cloud.tencent.com/im/callback-setting",
+      "",
+      "Full setup guide: https://github.com/wbxl2000/timbot",
     ].join("\n"),
     "Tencent IM credentials",
   );

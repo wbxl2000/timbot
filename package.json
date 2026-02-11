@@ -1,6 +1,6 @@
 {
   "name": "timbot",
-  "version": "2026.2.10",
+  "version": "2026.2.11",
   "type": "module",
   "description": "OpenClaw Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
