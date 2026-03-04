@@ -1,6 +1,6 @@
 {
   "name": "timbot",
-  "version": "2026.2.11",
+  "version": "2026.3.4",
   "type": "module",
   "description": "OpenClaw Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
@@ -22,7 +22,9 @@
     "build": "tsc && mkdir -p dist/src/debug && cp src/debug/GenerateTestUserSig-es.js src/debug/lib-generate-test-usersig-es.min.js dist/src/debug/"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"],
+    "extensions": [
+      "./dist/index.js"
+    ],
     "channel": {
       "id": "timbot",
       "label": "Tencent IM",
@@ -31,7 +33,11 @@
       "docsPath": "/channels/timbot",
       "docsLabel": "timbot",
       "blurb": "Tencent Cloud IM bot via webhooks + REST API.",
-      "aliases": ["tencentim", "腾讯im", "即时通信"],
+      "aliases": [
+        "tencentim",
+        "腾讯im",
+        "即时通信"
+      ],
       "order": 85
     },
     "install": {
