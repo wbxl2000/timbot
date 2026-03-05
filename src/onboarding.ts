@@ -216,7 +216,7 @@ export const timbotOnboardingAdapter: ChannelOnboardingAdapter = {
             ...(token ? { token } : {}),
             botAccount: "@RBT#001",
             webhookPath: "/timbot",
-            dm: { policy: "open" as const },
+            dm: { policy: "open" as const, allowFrom: ["*"] },
           },
         },
       };
@@ -230,7 +230,7 @@ export const timbotOnboardingAdapter: ChannelOnboardingAdapter = {
         timbot: {
           botAccount: "@RBT#001",
           webhookPath: "/timbot",
-          dm: { policy: "open" as const },
+          dm: { policy: "open" as const, allowFrom: ["*"] },
           ...next.channels?.timbot,
           enabled: true,
         },
