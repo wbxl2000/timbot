@@ -53,6 +53,8 @@ export type TimbotInboundMessage = {
   CallbackCommand?: string;
   From_Account?: string;
   To_Account?: string;
+  GroupId?: string;
+  GroupName?: string;
   MsgSeq?: number;
   MsgRandom?: number;
   MsgTime?: number;
@@ -90,4 +92,14 @@ export type TimbotSendMsgResponse = {
   MsgTime?: number;
   MsgKey?: string;
   MsgId?: string;
+};
+
+// 腾讯 IM 群消息发送请求
+export type TimbotSendGroupMsgRequest = {
+  GroupId: string;
+  Random: number;
+  MsgBody: TimbotMsgBodyElement[];
+  From_Account?: string;
+  MsgPriority?: string;
+  CloudCustomData?: string;
 };

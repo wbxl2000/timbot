@@ -14,7 +14,7 @@ import { listTimbotAccountIds, resolveDefaultTimbotAccountId, resolveTimbotAccou
 import { timbotConfigSchema } from "./config-schema.js";
 import { timbotOnboardingAdapter } from "./onboarding.js";
 import type { ResolvedTimbotAccount } from "./types.js";
-import { registerTimbotWebhookTarget, sendTimbotMessage } from "./monitor.js";
+import { registerTimbotWebhookTarget, sendTimbotMessage, sendTimbotGroupMessage } from "./monitor.js";
 
 const meta = {
   id: "timbot",
@@ -40,7 +40,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
   meta,
   onboarding: timbotOnboardingAdapter,
   capabilities: {
-    chatTypes: ["direct"],
+    chatTypes: ["direct", "group"],
     media: false,
     reactions: false,
     threads: false,
@@ -112,7 +112,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
     normalizeTarget: normalizeTimbotMessagingTarget,
     targetResolver: {
       looksLikeId: (raw) => Boolean(raw.trim()),
-      hint: "<userid>",
+      hint: "<userid> or group:<groupid>",
     },
   },
   outbound: {
@@ -120,6 +120,22 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
     chunkerMode: "text",
     textChunkLimit: 10000,
     sendText: async ({ account, target, text }) => {
+      // target 以 "group:" 开头表示群消息
+      if (target.startsWith("group:")) {
+        const groupId = target.slice("group:".length);
+        const result = await sendTimbotGroupMessage({
+          account,
+          groupId,
+          text,
+        });
+        return {
+          channel: "timbot",
+          ok: result.ok,
+          messageId: result.messageId ?? "",
+          error: result.error ? new Error(result.error) : undefined,
+        };
+      }
+
       const result = await sendTimbotMessage({
         account,
         toAccount: target,

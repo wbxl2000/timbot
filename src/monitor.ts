@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
 
-import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendMsgResponse } from "./types.js";
+import type { ResolvedTimbotAccount, TimbotInboundMessage, TimbotSendGroupMsgRequest, TimbotSendMsgResponse } from "./types.js";
 import { getTimbotRuntime } from "./runtime.js";
 import { genTestUserSig } from "./debug/GenerateTestUserSig-es.js";
 import { LOG_PREFIX, logSimple } from "./logger.js";
@@ -121,12 +121,11 @@ function generateUserSig(account: ResolvedTimbotAccount): string | undefined {
 }
 
 // 构建腾讯 IM API URL
-function buildTimbotApiUrl(account: ResolvedTimbotAccount, action: string): string {
+function buildTimbotApiUrl(account: ResolvedTimbotAccount, service: string, action: string): string {
   const domain = account.apiDomain || "console.tim.qq.com";
   const random = Math.floor(Math.random() * 4294967295);
   const userSig = generateUserSig(account) ?? "";
-  // 注意：identifier 和 userSig 都需要 URL 编码，因为可能包含特殊字符如 @ # 等
-  return `https://${domain}/v4/openim/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=administrator&usersig=${encodeURIComponent(userSig)}&random=${random}&contenttype=json`;
+  return `https://${domain}/v4/${service}/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=administrator&usersig=${encodeURIComponent(userSig)}&random=${random}&contenttype=json`;
 }
 
 // 发送腾讯 IM 消息
@@ -162,7 +161,7 @@ export async function sendTimbotMessage(params: {
     return { ok: false, error: `missing required params: ${missing.join(", ")}` };
   }
 
-  const url = buildTimbotApiUrl(account, "sendmsg");
+  const url = buildTimbotApiUrl(account, "openim", "sendmsg");
   const msgRandom = Math.floor(Math.random() * 4294967295);
 
   const body: Record<string, unknown> = {
@@ -215,6 +214,91 @@ export async function sendTimbotMessage(params: {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     error(`发送异常: ${errMsg}`);
+    return { ok: false, error: errMsg };
+  }
+}
+
+// 发送腾讯 IM 群消息
+export async function sendTimbotGroupMessage(params: {
+  account: ResolvedTimbotAccount;
+  groupId: string;
+  text: string;
+  fromAccount?: string;
+  target?: TimbotWebhookTarget;
+}): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  const { account, groupId, text, fromAccount, target } = params;
+
+  const info = (msg: string) => target ? log(target, "info", msg) : logSimple("info", msg);
+  const warn = (msg: string) => target ? log(target, "warn", msg) : logSimple("warn", msg);
+  const error = (msg: string) => target ? log(target, "error", msg) : logSimple("error", msg);
+  const verbose = (msg: string) => target ? logVerbose(target, msg) : undefined;
+
+  verbose(`准备发送群消息 -> ${groupId}, 内容长度: ${text.length}`);
+
+  if (!account.configured) {
+    warn("发送失败: 账号未配置");
+    return { ok: false, error: "account not configured" };
+  }
+
+  if (!account.sdkAppId || !account.secretKey) {
+    const missing: string[] = [];
+    if (!account.sdkAppId) missing.push("sdkAppId");
+    if (!account.secretKey) missing.push("secretKey");
+    error(`发送失败: 缺少必需参数: ${missing.join(", ")}`);
+    return { ok: false, error: `missing required params: ${missing.join(", ")}` };
+  }
+
+  const url = buildTimbotApiUrl(account, "group_open_http_svc", "send_group_msg");
+  const msgRandom = Math.floor(Math.random() * 4294967295);
+
+  const body: TimbotSendGroupMsgRequest = {
+    GroupId: groupId,
+    Random: msgRandom,
+    MsgBody: [
+      {
+        MsgType: "TIMTextElem",
+        MsgContent: { Text: text },
+      },
+    ],
+  };
+
+  if (fromAccount) {
+    body.From_Account = fromAccount;
+  }
+
+  verbose(`发送群消息请求 URL: ${url}`);
+  verbose(`发送群消息请求 Body: ${JSON.stringify({ ...body, MsgBody: [{ MsgType: "TIMTextElem", MsgContent: { Text: text.length > 100 ? text.slice(0, 100) + "..." : text } }] })}`);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    verbose(`HTTP 响应状态: ${response.status} ${response.statusText}`);
+
+    const resultText = await response.text();
+    verbose(`响应内容: ${resultText}`);
+
+    let result: TimbotSendMsgResponse;
+    try {
+      result = JSON.parse(resultText) as TimbotSendMsgResponse;
+    } catch {
+      error("响应解析失败，非 JSON 格式");
+      return { ok: false, error: `Invalid response: ${resultText.slice(0, 200)}` };
+    }
+
+    if (result.ErrorCode !== 0) {
+      error(`群消息发送失败: ErrorCode=${result.ErrorCode}, ErrorInfo=${result.ErrorInfo}`);
+      return { ok: false, error: result.ErrorInfo || `ErrorCode: ${result.ErrorCode}` };
+    }
+
+    info(`群消息发送成功 -> ${groupId}, messageId: ${result.MsgKey}`);
+    return { ok: true, messageId: result.MsgKey };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    error(`群消息发送异常: ${errMsg}`);
     return { ok: false, error: errMsg };
   }
 }
@@ -370,6 +454,131 @@ async function processAndReply(params: {
   log(target, "info", `消息处理完成 <- ${fromAccount}`);
 }
 
+// 处理群聊消息并回复
+async function processGroupAndReply(params: {
+  target: TimbotWebhookTarget;
+  msg: TimbotInboundMessage;
+}): Promise<void> {
+  const { target, msg } = params;
+  const core = target.core;
+  const config = target.config;
+  const account = target.account;
+
+  const groupId = msg.GroupId?.trim() || "unknown";
+  const fromAccount = msg.From_Account?.trim() || "unknown";
+  const rawBody = extractTextFromMsgBody(msg.MsgBody);
+
+  log(target, "info", `收到群消息 <- group:${groupId}, from: ${fromAccount}, msgSeq: ${msg.MsgSeq}`);
+  logVerbose(target, `群消息内容: ${rawBody.slice(0, 200)}${rawBody.length > 200 ? "..." : ""}`);
+
+  if (!rawBody.trim()) {
+    log(target, "warn", "群消息内容为空，跳过处理");
+    return;
+  }
+
+  if (/^\[.+\]$/.test(rawBody.trim())) {
+    log(target, "warn", `群占位符消息，跳过处理: ${rawBody} (group: ${groupId}, from: ${fromAccount})`);
+    return;
+  }
+
+  logVerbose(target, `开始处理群消息, 账号: ${account.accountId}, group: ${groupId}`);
+
+  const route = core.channel.routing.resolveAgentRoute({
+    cfg: config,
+    channel: "timbot",
+    accountId: account.accountId,
+    peer: { kind: "group", id: groupId },
+  });
+
+  logVerbose(target, `processing group message from ${fromAccount} in ${groupId}, agentId=${route.agentId}`);
+
+  const groupLabel = `group:${groupId}`;
+  const senderLabel = `user:${fromAccount}`;
+  const storePath = core.channel.session.resolveStorePath(config.session?.store, {
+    agentId: route.agentId,
+  });
+  const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(config);
+  const previousTimestamp = core.channel.session.readSessionUpdatedAt({
+    storePath,
+    sessionKey: route.sessionKey,
+  });
+  const body = core.channel.reply.formatAgentEnvelope({
+    channel: "TIMBOT",
+    from: groupLabel,
+    previousTimestamp,
+    envelope: envelopeOptions,
+    body: rawBody,
+    chatType: "group",
+    senderLabel,
+  });
+
+  const ctxPayload = core.channel.reply.finalizeInboundContext({
+    Body: body,
+    RawBody: rawBody,
+    CommandBody: rawBody,
+    From: `timbot:group:${groupId}`,
+    To: `timbot:${account.botAccount || msg.To_Account || "bot"}`,
+    SessionKey: route.sessionKey,
+    AccountId: route.accountId,
+    ChatType: "group",
+    ConversationLabel: groupLabel,
+    GroupSubject: msg.GroupName || undefined,
+    SenderName: fromAccount,
+    SenderId: fromAccount,
+    Provider: "timbot",
+    Surface: "timbot",
+    MessageSid: msg.MsgKey ?? String(msg.MsgSeq ?? ""),
+    OriginatingChannel: "timbot",
+    OriginatingTo: `timbot:group:${groupId}`,
+  });
+
+  await core.channel.session.recordInboundSession({
+    storePath,
+    sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
+    ctx: ctxPayload,
+    onRecordError: (err: unknown) => {
+      target.runtime.error?.(`timbot: failed updating group session meta: ${String(err)}`);
+    },
+  });
+
+  const tableMode = core.channel.text.resolveMarkdownTableMode({
+    cfg: config,
+    channel: "timbot",
+    accountId: account.accountId,
+  });
+
+  logVerbose(target, `开始生成群回复 -> group:${groupId}`);
+
+  await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+    ctx: ctxPayload,
+    cfg: config,
+    dispatcherOptions: {
+      deliver: async (payload: { text?: string }) => {
+        const text = core.channel.text.convertMarkdownTables(payload.text ?? "", tableMode);
+        if (!text.trim()) return;
+
+        const result = await sendTimbotGroupMessage({
+          account,
+          groupId,
+          text,
+          target,
+        });
+
+        if (!result.ok) {
+          target.runtime.error?.(`[${account.accountId}] timbot group send failed: ${result.error}`);
+        } else {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        }
+      },
+      onError: (err: unknown, info: { kind: string }) => {
+        target.runtime.error?.(`[${account.accountId}] timbot group ${info.kind} reply failed: ${String(err)}`);
+      },
+    },
+  });
+
+  log(target, "info", `群消息处理完成 <- group:${groupId}, from: ${fromAccount}`);
+}
+
 export function registerTimbotWebhookTarget(target: TimbotWebhookTarget): () => void {
   const key = normalizeWebhookPath(target.path);
   const normalizedTarget = { ...target, path: key };
@@ -471,9 +680,11 @@ export async function handleTimbotWebhookRequest(
   // 立即返回成功响应给腾讯 IM
   jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
 
-  // 只处理机器人消息回调
-  if (callbackCommand !== "Bot.OnC2CMessage") {
-    logSimple("info", `非 Bot.OnC2CMessage 回调，跳过: ${callbackCommand}`);
+  // 只处理机器人消息回调（C2C 单聊 + 群聊）
+  const isC2C = callbackCommand === "Bot.OnC2CMessage";
+  const isGroup = callbackCommand === "Bot.OnGroupMessage";
+  if (!isC2C && !isGroup) {
+    logSimple("info", `非 Bot 消息回调，跳过: ${callbackCommand}`);
     return true;
   }
 
@@ -488,9 +699,15 @@ export async function handleTimbotWebhookRequest(
 
   if (core) {
     const enrichedTarget: TimbotWebhookTarget = { ...target, core };
-    processAndReply({ target: enrichedTarget, msg }).catch((err) => {
-      target.runtime.error?.(`[${target.account.accountId}] timbot agent failed: ${String(err)}`);
-    });
+    if (isGroup) {
+      processGroupAndReply({ target: enrichedTarget, msg }).catch((err) => {
+        target.runtime.error?.(`[${target.account.accountId}] timbot group agent failed: ${String(err)}`);
+      });
+    } else {
+      processAndReply({ target: enrichedTarget, msg }).catch((err) => {
+        target.runtime.error?.(`[${target.account.accountId}] timbot agent failed: ${String(err)}`);
+      });
+    }
   }
 
   return true;
