@@ -92,9 +92,12 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       const resolvedAccountId = accountId ?? account.accountId ?? DEFAULT_ACCOUNT_ID;
       const useAccountPath = Boolean((cfg as OpenClawConfig).channels?.timbot?.accounts?.[resolvedAccountId]);
       const basePath = useAccountPath ? `channels.timbot.accounts.${resolvedAccountId}.` : "channels.timbot.";
+      const policy = account.config.dm?.policy ?? "open";
+      const rawAllowFrom = (account.config.dm?.allowFrom ?? []).map((entry) => String(entry));
+      const allowFrom = policy === "open" && rawAllowFrom.length === 0 ? ["*"] : rawAllowFrom;
       return {
-        policy: account.config.dm?.policy ?? "open",
-        allowFrom: (account.config.dm?.allowFrom ?? []).map((entry) => String(entry)),
+        policy,
+        allowFrom,
         policyPath: `${basePath}dm.policy`,
         allowFromPath: `${basePath}dm.allowFrom`,
         approveHint: formatPairingApproveHint("timbot"),

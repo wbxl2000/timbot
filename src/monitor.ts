@@ -466,6 +466,12 @@ async function processGroupAndReply(params: {
 
   const groupId = msg.GroupId?.trim() || "unknown";
   const fromAccount = msg.From_Account?.trim() || "unknown";
+
+  if (account.botAccount && fromAccount === account.botAccount) {
+    log(target, "info", `跳过机器人自身消息 <- group:${groupId}, from: ${fromAccount}`);
+    return;
+  }
+
   const rawBody = extractTextFromMsgBody(msg.MsgBody);
 
   log(target, "info", `收到群消息 <- group:${groupId}, from: ${fromAccount}, msgSeq: ${msg.MsgSeq}`);
