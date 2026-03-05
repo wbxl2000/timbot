@@ -127,6 +127,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
           account,
           groupId,
           text,
+          fromAccount: account.botAccount,
         });
         return {
           channel: "timbot",

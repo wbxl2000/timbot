@@ -561,6 +561,7 @@ async function processGroupAndReply(params: {
           account,
           groupId,
           text,
+          fromAccount: account.botAccount,
           target,
         });
 
