@@ -191,14 +191,13 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
     startAccount: async (ctx) => {
       const account = ctx.account;
 
-      // verbose 级别打印配置信息
       ctx.log?.debug(`启动账号: ${account.accountId}, configured=${account.configured}, enabled=${account.enabled}`);
       ctx.log?.debug(`sdkAppId=${account.sdkAppId ?? "[未设置]"}, secretKey=${account.secretKey ? "[已配置]" : "[未设置]"}`);
 
       if (!account.configured) {
         ctx.log?.warn(`[${account.accountId}] timbot not configured; skipping webhook registration`);
         ctx.setStatus({ accountId: account.accountId, running: false, configured: false });
-        return { stop: () => {} };
+        return;
       }
       const path = (account.config.webhookPath ?? "/timbot").trim();
       const unregister = registerTimbotWebhookTarget({
@@ -217,8 +216,10 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
         webhookPath: path,
         lastStartAt: Date.now(),
       });
-      return {
-        stop: () => {
+
+      // 保持 Promise 挂起直到 abortSignal 触发，避免 gateway 判定 channel 退出
+      return new Promise<void>((resolve) => {
+        const onAbort = () => {
           unregister();
           ctx.log?.info(`[${account.accountId}] timbot webhook unregistered`);
           ctx.setStatus({
@@ -226,8 +227,14 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
             running: false,
             lastStopAt: Date.now(),
           });
-        },
-      };
+          resolve();
+        };
+        if (ctx.abortSignal.aborted) {
+          onAbort();
+          return;
+        }
+        ctx.abortSignal.addEventListener("abort", onAbort, { once: true });
+      });
     },
     stopAccount: async (ctx) => {
       ctx.setStatus({
