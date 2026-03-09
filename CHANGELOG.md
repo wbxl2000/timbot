@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026.3.10
+
+- feat: 流式消息支持，新增 `streamingMode` 配置（`off` / `text_modify` / `custom_modify` / `tim_stream`）
+- feat: 流式失败兜底策略 `fallbackPolicy`（`strict` / `final_text`）
+- feat: `typingText` 占位消息，非流式通过 modify 替换，流式作为 CompatibleText
+- feat: 消息修改 API（modify_c2c_msg / modify_group_msg）
+- fix: API 响应判断改为 `ActionStatus` 检查，兼容流式 API 不返回 `ErrorCode` 的情况
+- fix: `tim_stream` 改为腾讯云官方 `TIMStreamElem` 协议（`Chunks` / `StreamMsgID` / `CompatibleText`）
+- fix: `identifier` 正确用于 UserSig、API URL 和无 `botAccount` 时的发送者身份
+- fix: 流式超限停止时优先覆盖 `typingText` 占位消息，避免遗留“正在思考中...”
+- fix: webhook 签名校验改为 `timingSafeEqual`
+- fix: 占位符消息跳过日志从 warn 降级为 verbose
+- fix: 明确关闭 OpenClaw `blockStreaming` 能力，移除无效的 `blockStreamingCoalesce` 配置
+- docs: README 重写为配置项参考格式，接入教程链接更新为腾讯云官方文档
+
 ## 2026.3.5
 
 - feat: 群聊支持 (Bot.OnGroupMessage) (0986ef7)

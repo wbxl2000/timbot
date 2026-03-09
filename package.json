@@ -1,6 +1,6 @@
 {
   "name": "timbot",
-  "version": "2026.3.5",
+  "version": "2026.3.10",
   "type": "module",
   "description": "OpenClaw Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
@@ -19,7 +19,8 @@
     "chatbot"
   ],
   "scripts": {
-    "build": "tsc && mkdir -p dist/src/debug && cp src/debug/GenerateTestUserSig-es.js src/debug/lib-generate-test-usersig-es.min.js dist/src/debug/"
+    "build": "tsc && mkdir -p dist/src/debug && cp src/debug/GenerateTestUserSig-es.js src/debug/lib-generate-test-usersig-es.min.js dist/src/debug/",
+    "test": "pnpm build && node --test test/*.test.mjs"
   },
   "openclaw": {
     "extensions": [
@@ -28,7 +29,7 @@
     "channel": {
       "id": "timbot",
       "label": "Tencent IM",
-      "selectionLabel": "Tencent IM (plugin)",
+      "selectionLabel": "Tencent IM (timbot)",
       "detailLabel": "Tencent Cloud IM Bot",
       "docsPath": "/channels/timbot",
       "docsLabel": "timbot",
@@ -46,7 +47,6 @@
       "defaultChoice": "npm"
     }
   },
-  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
