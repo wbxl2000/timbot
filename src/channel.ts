@@ -19,7 +19,7 @@ import { registerTimbotWebhookTarget, sendTimbotMessage, sendTimbotGroupMessage 
 const meta = {
   id: "timbot",
   label: "Tencent IM",
-  selectionLabel: "Tencent IM (plugin)",
+  selectionLabel: "Tencent IM (timbot)",
   detailLabel: "Tencent Cloud IM Bot",
   docsPath: "/channels/timbot",
   docsLabel: "timbot",
@@ -66,7 +66,7 @@ export const timbotPlugin: ChannelPlugin<ResolvedTimbotAccount> = {
       deleteAccountFromConfigSection({
         cfg: cfg as OpenClawConfig,
         sectionKey: "timbot",
-        clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "secretKey", "botAccount", "apiDomain", "welcomeText"],
+        clearBaseFields: ["name", "webhookPath", "sdkAppId", "identifier", "secretKey", "botAccount", "apiDomain", "welcomeText", "typingText", "streamingMode", "fallbackPolicy", "overflowPolicy"],
         accountId,
       }),
     isConfigured: (account) => account.configured,

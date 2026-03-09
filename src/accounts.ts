@@ -1,7 +1,14 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
-import type { ResolvedTimbotAccount, TimbotAccountConfig, TimbotConfig } from "./types.js";
+import type {
+  ResolvedTimbotAccount,
+  TimbotAccountConfig,
+  TimbotOverflowPolicy,
+  TimbotConfig,
+  TimbotStreamingFallbackPolicy,
+  TimbotStreamingMode,
+} from "./types.js";
 import { logSimple } from "./logger.js";
 
 const DEFAULT_API_DOMAIN = "console.tim.qq.com";
@@ -61,6 +68,22 @@ export function resolveTimbotAccount(params: {
   const botAccount = merged.botAccount?.trim() || undefined;
   const apiDomain = merged.apiDomain?.trim() || DEFAULT_API_DOMAIN;
   const token = merged.token?.trim() || undefined;
+  const streamingMode: TimbotStreamingMode =
+    merged.streamingMode === "custom_modify"
+      ? "custom_modify"
+      : merged.streamingMode === "text_modify"
+        ? "text_modify"
+        : merged.streamingMode === "tim_stream"
+          ? "tim_stream"
+          : "off";
+  const fallbackPolicy: TimbotStreamingFallbackPolicy =
+    merged.fallbackPolicy === "final_text"
+      ? "final_text"
+      : "strict";
+  const overflowPolicy: TimbotOverflowPolicy =
+    merged.overflowPolicy === "split"
+      ? "split"
+      : "stop";
 
   // 配置完整需要 sdkAppId + secretKey（identifier 可选，默认使用 administrator）
   const configured = Boolean(sdkAppId && secretKey);
@@ -86,6 +109,9 @@ export function resolveTimbotAccount(params: {
     botAccount,
     apiDomain,
     token,
+    streamingMode,
+    fallbackPolicy,
+    overflowPolicy,
     config: merged,
   };
 }

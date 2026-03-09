@@ -2,9 +2,9 @@
 
 Maintainer: longyuqi@tencent.com
 
-Status: Tencent Cloud IM intelligent bot via webhooks + REST API.
+Tencent Cloud IM intelligent bot via webhooks + REST API.
 
-**We've published a full integration tutorial on our WeChat Official Account (微信公众号): [Full integration guide](https://mp.weixin.qq.com/s/6iq-w023LGuYr6N9SR_kvw)**
+For a full integration tutorial, see: **[Tencent Cloud Official Documentation](https://cloud.tencent.com/document/product/269/128326)**
 
 ## Install
 
@@ -20,64 +20,82 @@ pnpm install && pnpm build
 bash install-timbot.sh
 ```
 
-## Quick Start
+## Configuration
 
-### Step 1: Create IM App and Get Credentials
+All options are under `channels.timbot` in the OpenClaw config.
 
-1. Go to [Tencent Cloud IM Console](https://console.cloud.tencent.com/im)
-2. Click **Create Application**, enter a name, select **China** data center
-3. In the app detail page, record:
-   - **SDKAppID** — unique app identifier
-   - **SecretKey** — key for generating UserSig
+### Basic
 
-### Step 2: Create Bot Account and Configure Callbacks
+| Option | Required | Description | Default |
+|--------|----------|-------------|---------|
+| `sdkAppId` | Yes | Tencent Cloud IM SDK App ID | — |
+| `secretKey` | Yes | Secret key for generating UserSig | — |
+| `identifier` | No | Identity for API calls | `administrator` |
+| `botAccount` | No | Bot account ID | `@RBT#001` |
+| `apiDomain` | No | Tencent IM API domain | `console.tim.qq.com` |
+| `token` | No | Callback token for signature verification | — |
+| `webhookPath` | No | Webhook endpoint path | `/timbot` |
+| `enabled` | No | Enable/disable this channel | `true` |
 
-1. In the IM console sidebar, click **REST API Debug**
-2. Select your app → **Bot → Create Bot**, set UserID / Nick / FaceUrl, then submit
-3. In the sidebar, click **Callback Configuration → Chat**:
-   - **URL**: `http://<your-server-ip>:18789/timbot`
-   - Check **Enable Authentication**
-   - **Token**: a custom string (e.g. `mysecrettoken`)
-   - Check **Bot Event Callback** under Bot Events
+### Messaging & Streaming
 
-### Step 3: Configure and Activate
+| Option | Description | Default |
+|--------|-------------|---------|
+| `welcomeText` | Welcome message for new conversations | — |
+| `typingText` | Placeholder text while the bot is generating (in non-streaming mode, sent as a placeholder message then modified; in streaming mode, used as CompatibleText) | `正在思考中...` |
+| `streamingMode` | Streaming mode: `off` / `text_modify` / `custom_modify` / `tim_stream` | `off` |
+| `fallbackPolicy` | Streaming fallback policy: `strict` (no fallback) / `final_text` (degrade to final text on failure) | `strict` |
+| `overflowPolicy` | What to do when a streaming reply gets too large: `stop` (stop and send a notice, default) / `split` (continue by hard-splitting into follow-up messages) | `stop` |
 
-#### Interactive Setup (Recommended)
+### DM Policy
 
-```bash
-openclaw onboard
-```
+| Option | Description | Default |
+|--------|-------------|---------|
+| `dm.policy` | DM policy: `open` / `allowlist` / `pairing` / `disabled` | `open` |
+| `dm.allowFrom` | Allowed sender list (`open` policy defaults to `["*"]`) | — |
 
-Select **Tencent IM (plugin)** in the channel list, then follow the prompts to enter SDKAppID, SecretKey, and Token.
-
-### Step 4: Open Network Access
-
-```bash
-openclaw config set gateway.bind lan
-openclaw gateway restart
-```
-
-Ensure port **18789** is open in your server firewall.
-
-### Step 5: Verify
-
-Send a message to the bot through your IM client. If the bot responds, the integration is working.
-
-## Configuration Options
+### Multi-Account
 
 | Option | Description |
 |--------|-------------|
-| `webhookPath` | Webhook endpoint path (default: `/timbot`) |
-| `sdkAppId` | Tencent Cloud IM SDK App ID |
-| `secretKey` | Secret key for generating UserSig |
-| `botAccount` | Bot account ID |
-| `apiDomain` | Tencent IM API domain (default: `console.tim.qq.com`) |
-| `token` | Callback token for signature verification |
-| `welcomeText` | Welcome message for new conversations |
-| `dm.policy` | DM policy: `pairing`, `allowlist`, `open`, or `disabled` |
+| `defaultAccount` | Default account ID |
+| `accounts` | Multi-account config object; key is account ID, value contains all account-level options above |
 
-## Notes
+In multi-account mode, top-level config serves as the base for all accounts. Account-level fields override the top-level config.
 
-- Webhooks require public HTTPS or HTTP with firewall rules. Only expose the webhook path.
-- `sdkAppId` and `secretKey` are obtained from the [Tencent Cloud IM Console](https://console.cloud.tencent.com/im).
-- Supports multiple accounts via the `accounts` configuration.
+## FAQ
+
+### How do I choose a streamingMode?
+
+- **Not sure / just getting started** → `off` (default). Most stable; works on all clients.
+- **Want a "typing" experience with official IM clients** → `text_modify`. Best compatibility across Web, Android, iOS, Mini Program, and Desktop — the message is continuously updated in place.
+- **Custom frontend with your own rendering** → `custom_modify`. Has more control; delivers structured data via `TIMCustomElem` for your frontend to parse and render.
+- **Want native Tencent Cloud streaming (`TIMStreamElem`)** → `tim_stream`. Make sure your client supports this message type, otherwise users will only see the CompatibleText.
+
+### How do I quickly change streaming settings?
+
+```bash
+# Enable text_modify streaming
+openclaw config set channels.timbot.streamingMode text_modify
+
+# Enable custom_modify streaming
+openclaw config set channels.timbot.streamingMode custom_modify
+
+# Enable tim_stream streaming
+openclaw config set channels.timbot.streamingMode tim_stream
+
+# Disable streaming
+openclaw config set channels.timbot.streamingMode off
+
+# Set fallback policy to degrade to final text on failure
+openclaw config set channels.timbot.fallbackPolicy final_text
+
+# Stop and send a notice when streaming output gets too large (default)
+openclaw config set channels.timbot.overflowPolicy stop
+
+# Continue by hard-splitting long output into follow-up messages
+openclaw config set channels.timbot.overflowPolicy split
+
+# Customize typing placeholder text
+openclaw config set channels.timbot.typingText "Thinking, please wait..."
+```

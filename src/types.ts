@@ -3,6 +3,10 @@ export type TimbotDmConfig = {
   allowFrom?: Array<string | number>;
 };
 
+export type TimbotStreamingMode = "off" | "custom_modify" | "text_modify" | "tim_stream";
+export type TimbotStreamingFallbackPolicy = "strict" | "final_text";
+export type TimbotOverflowPolicy = "stop" | "split";
+
 export type TimbotAccountConfig = {
   name?: string;
   enabled?: boolean;
@@ -17,6 +21,10 @@ export type TimbotAccountConfig = {
 
   dm?: TimbotDmConfig;
   welcomeText?: string;
+  typingText?: string;
+  streamingMode?: TimbotStreamingMode;
+  fallbackPolicy?: TimbotStreamingFallbackPolicy;
+  overflowPolicy?: TimbotOverflowPolicy;
 };
 
 export type TimbotConfig = TimbotAccountConfig & {
@@ -35,6 +43,9 @@ export type ResolvedTimbotAccount = {
   botAccount?: string;
   apiDomain: string;
   token?: string;
+  streamingMode: TimbotStreamingMode;
+  fallbackPolicy: TimbotStreamingFallbackPolicy;
+  overflowPolicy: TimbotOverflowPolicy;
   config: TimbotAccountConfig;
 };
 
@@ -92,6 +103,8 @@ export type TimbotSendMsgResponse = {
   MsgTime?: number;
   MsgKey?: string;
   MsgId?: string;
+  MsgSeq?: number;
+  StreamMsgID?: string;
 };
 
 // 腾讯 IM 群消息发送请求
