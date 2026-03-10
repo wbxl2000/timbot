@@ -5,6 +5,14 @@
   "description": "OpenClaw Tencent Cloud IM intelligent bot channel plugin",
   "author": "longyuqi@tencent.com",
   "license": "MIT",
+  "homepage": "https://github.com/wbxl2000/timbot#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wbxl2000/timbot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wbxl2000/timbot/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
