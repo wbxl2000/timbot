@@ -4,3 +4,4 @@ node_modules/
 *.tgz
 extensions/
 openclaw-src/
+.claude/
