@@ -21,6 +21,11 @@ Local testing, streaming mode selection, and webhook replay examples are documen
 
 ## Changelog
 
+### 2026.3.12
+
+- docs: 补充流式模式依赖上游 partial 输出的说明与可观测性日志
+- chore: 添加调试配置命令与本地 webhook 测试脚本
+
 ### 2026.3.10
 
 - feat: 流式消息支持，新增 `streamingMode` 配置（`off` / `text_modify` / `custom_modify` / `tim_stream`）
