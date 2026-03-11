@@ -2,6 +2,8 @@
 
 通过 `streamingMode` 配置项选择回复模式，可选值：`off`（默认）、`text_modify`、`custom_modify`、`tim_stream`。
 
+注意：这里的三种“流式模式”只决定 TIM 侧如何承载回复，不保证上游模型一定会流式产出文本。当前实现统一依赖 OpenClaw 的 `onPartialReply`。如果 provider/model 没有产出 partial（例如只有最终 `final` 文本），TIM 侧只能表现为占位消息 + 最终收尾，而不会出现中间逐步增长的文本。
+
 ## off（默认）
 
 不使用流式。agent 生成完毕后一次性发送完整回复。

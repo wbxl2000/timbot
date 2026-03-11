@@ -72,6 +72,8 @@ In multi-account mode, top-level config serves as the base for all accounts. Acc
 - **Custom frontend with your own rendering** → `custom_modify`. Has more control; delivers structured data via `TIMCustomElem` for your frontend to parse and render.
 - **Want native Tencent Cloud streaming (`TIMStreamElem`)** → `tim_stream`. Make sure your client supports this message type, otherwise users will only see the CompatibleText.
 
+Important: these three streaming modes only decide how TIM carries updates. They do not guarantee that the upstream model will emit text incrementally. The selected provider/model must produce partial text in OpenClaw (`onPartialReply`). If the upstream only returns a final answer at the end, TIM will behave like “placeholder message -> final replace” instead of showing text grow chunk by chunk.
+
 ### How do I quickly change streaming settings?
 
 ```bash

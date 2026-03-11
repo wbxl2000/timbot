@@ -72,6 +72,8 @@ bash install-timbot.sh
 - **自研前端，需要自定义渲染逻辑** → `custom_modify`，拥有更细致的控制能力，通过 `TIMCustomElem` 传递结构化数据，前端自行解析渲染。
 - **想用腾讯云原生流式能力（`TIMStreamElem`）** → `tim_stream`，需确认客户端已支持该消息类型，否则只能看到 CompatibleText。
 
+注意：以上三种“流式模式”只决定 TIM 侧的消息承载方式，不保证上游模型一定会逐块输出。前提是所选 provider/model 能在 OpenClaw 中产生 partial 文本（`onPartialReply`）。如果上游只在结束时返回 final，TIM 侧会表现为「占位消息 -> 最终替换」，不会看到逐字增长。
+
 ### 如何快速修改流式消息配置？
 
 ```bash
@@ -116,6 +118,8 @@ openclaw gateway run --verbose --force --dev
 # 观察 WebSocket 全量流量 + 原始流式事件，并同时输出到终端和本地文件
 pnpm gateway:watch --force --verbose --raw-stream --raw-stream-path ~/.openclaw/logs/raw-stream.jsonl --ws-log full 2>&1 | tee /tmp/openclaw-timbot-stream.log
 ```
+
+如果 `raw-stream.jsonl` 里只有 `assistant_message_end`，没有 `assistant_text_stream` / `text_delta`，说明问题在上游模型或 provider 没有产出 partial，而不是 `timbot.streamingMode` 没生效。
 
 ### 配置 / 切换大模型 Provider
 

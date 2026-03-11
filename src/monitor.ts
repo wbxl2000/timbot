@@ -921,7 +921,7 @@ async function executeStreamingReply(params: {
 
   logVerbose(
     target,
-    `${L}reply streaming source: ${useStreaming ? `partial (throttleMs=${TIMBOT_PARTIAL_STREAM_THROTTLE_MS})` : "final-only"} (streamingMode=${account.streamingMode}, fallbackPolicy=${fallbackPolicy}, overflowPolicy=${overflowPolicy})`,
+    `${L}reply streaming path: ${useStreaming ? `partial (throttleMs=${TIMBOT_PARTIAL_STREAM_THROTTLE_MS})` : "final-only"} (streamingMode=${account.streamingMode}, fallbackPolicy=${fallbackPolicy}, overflowPolicy=${overflowPolicy})`,
   );
 
   let streamMsgRef: StreamingMsgRef | undefined;
@@ -937,6 +937,10 @@ async function executeStreamingReply(params: {
 
   let typingMsgRef: StreamingMsgRef | undefined;
   const collectedTexts: string[] = [];
+  let assistantMessageStartCount = 0;
+  let assistantMessageStartAt: number | undefined;
+  let partialReplyCount = 0;
+  let firstPartialReplyAt: number | undefined;
 
   const buildTimStreamRequest = (params: {
     markdown: string;
@@ -1260,6 +1264,8 @@ async function executeStreamingReply(params: {
       disableBlockStreaming: replyRuntime.disableBlockStreaming,
       onAssistantMessageStart: useStreaming
         ? () => {
+            assistantMessageStartCount += 1;
+            assistantMessageStartAt ??= Date.now();
             partialTextAccumulator.noteAssistantMessageStart();
           }
         : undefined,
@@ -1269,6 +1275,8 @@ async function executeStreamingReply(params: {
             if (!text) {
               return;
             }
+            partialReplyCount += 1;
+            firstPartialReplyAt ??= Date.now();
             const visibleText = partialTextAccumulator.absorbPartial(text);
             logVerbose(
               target,
@@ -1326,6 +1334,17 @@ async function executeStreamingReply(params: {
 
   const streamFallbackText = streamFallbackTexts.join("\n\n");
   const streamVisibleText = partialTextAccumulator.getVisibleText();
+  const firstPartialLatencyMs =
+    assistantMessageStartAt != null && firstPartialReplyAt != null
+      ? Math.max(0, firstPartialReplyAt - assistantMessageStartAt)
+      : undefined;
+
+  if (useStreaming) {
+    logVerbose(
+      target,
+      `[partialStream] ${L}summary: assistantStarts=${assistantMessageStartCount}, partialCount=${partialReplyCount}, firstPartialLatencyMs=${firstPartialLatencyMs ?? "n/a"}, visibleLen=${streamVisibleText.length}, fallbackLen=${streamFallbackText.length}, streamFailed=${streamFailed}, overflowed=${streamOverflowed}, t=${Date.now()}`,
+    );
+  }
 
   if (
     useStreaming
@@ -1335,6 +1354,13 @@ async function executeStreamingReply(params: {
     )
   ) {
     const fullText = resolveStreamingFinalText(streamVisibleText, streamFallbackText);
+    if (assistantMessageStartCount > 0 && partialReplyCount === 0 && fullText.trim()) {
+      log(
+        target,
+        "warn",
+        `${L}上游模型未产出可见 partial 文本，本次回复没有中间流式更新，将表现为「占位消息 + 最终收尾」(assistantStarts=${assistantMessageStartCount}, finalTextLen=${fullText.length})。如需确认，请开启 --raw-stream 并检查是否存在 assistant_text_stream/text_delta。`,
+      );
+    }
     let finalized = false;
     let overflowStopHandled = false;
     const handleOverflow = async (): Promise<boolean> => {
