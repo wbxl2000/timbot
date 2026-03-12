@@ -8,6 +8,7 @@ import type {
 import { addWildcardAllowFrom, DEFAULT_ACCOUNT_ID, formatDocsLink } from "openclaw/plugin-sdk";
 import type { TimbotConfig } from "./types.js";
 import { resolveTimbotAccount } from "./accounts.js";
+import { normalizeOptionalText } from "./config-text.js";
 
 const channel = "timbot" as const;
 
@@ -145,7 +146,10 @@ export const timbotOnboardingAdapter: ChannelOnboardingAdapter = {
 
   configure: async ({ cfg, prompter }) => {
     const timbotCfg = cfg.channels?.timbot as TimbotConfig | undefined;
-    const hasConfigCreds = Boolean(timbotCfg?.sdkAppId?.trim() && timbotCfg?.secretKey?.trim());
+    const hasConfigCreds = Boolean(
+      normalizeOptionalText(timbotCfg?.sdkAppId)
+      && normalizeOptionalText(timbotCfg?.secretKey),
+    );
 
     let next = cfg;
     let sdkAppId: string | null = null;

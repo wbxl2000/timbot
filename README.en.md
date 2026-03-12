@@ -45,7 +45,7 @@ All options are under `channels.timbot` in the OpenClaw config.
 | `typingText` | Placeholder text while the bot is generating (in non-streaming mode, sent as a placeholder message then modified; in streaming mode, used as CompatibleText) | `正在思考中...` |
 | `streamingMode` | Streaming mode: `off` / `text_modify` / `custom_modify` / `tim_stream` | `off` |
 | `fallbackPolicy` | Streaming fallback policy: `strict` (no fallback) / `final_text` (degrade to final text on failure) | `strict` |
-| `overflowPolicy` | What to do when a streaming reply gets too large: `stop` (stop and send a notice, default) / `split` (continue by hard-splitting into follow-up messages) | `stop` |
+| `overflowPolicy` | What to do when a streaming reply gets too large: `stop` (stop and send a notice) / `split` (continue by splitting into follow-up messages, default) | `split` |
 
 ### DM Policy
 
@@ -92,10 +92,10 @@ openclaw config set channels.timbot.streamingMode off
 # Set fallback policy to degrade to final text on failure
 openclaw config set channels.timbot.fallbackPolicy final_text
 
-# Stop and send a notice when streaming output gets too large (default)
+# Stop and send a notice when streaming output gets too large
 openclaw config set channels.timbot.overflowPolicy stop
 
-# Continue by hard-splitting long output into follow-up messages
+# Continue by splitting long output into follow-up messages (default)
 openclaw config set channels.timbot.overflowPolicy split
 
 # Customize typing placeholder text

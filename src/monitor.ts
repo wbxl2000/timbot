@@ -24,6 +24,9 @@ import {
   buildTextMsgBody,
 } from "./streaming-policy.js";
 import type { TimbotTimStreamChunk } from "./streaming-policy.js";
+import { isSelfInboundMessage, resolveOutboundFromAccount } from "./sender.js";
+import { createPartialTextAccumulator } from "./stream-text.js";
+import { splitTextByPreferredBreaks } from "./text-splitter.js";
 
 export type TimbotRuntimeEnv = {
   log?: (message: string) => void;
@@ -128,12 +131,23 @@ function generateUserSig(account: ResolvedTimbotAccount): string | undefined {
     return undefined;
   }
   const identifier = account.identifier || "administrator";
-  const result = genTestUserSig({
-    userID: identifier,
-    SDKAppID: Number(account.sdkAppId),
-    SecretKey: account.secretKey,
-  });
-  return result?.userSig;
+  const originalConsoleLog = console.log;
+  const originalConsoleError = console.error;
+  try {
+    // The bundled TIM sig helper logs the full sig generation details on every
+    // call, which floods local repro logs without adding signal.
+    console.log = () => {};
+    console.error = () => {};
+    const result = genTestUserSig({
+      userID: identifier,
+      SDKAppID: Number(account.sdkAppId),
+      SecretKey: account.secretKey,
+    });
+    return result?.userSig;
+  } finally {
+    console.log = originalConsoleLog;
+    console.error = originalConsoleError;
+  }
 }
 
 // 构建腾讯 IM API URL
@@ -143,10 +157,6 @@ function buildTimbotApiUrl(account: ResolvedTimbotAccount, service: string, acti
   const random = Math.floor(Math.random() * 4294967295);
   const userSig = generateUserSig(account) ?? "";
   return `https://${domain}/v4/${service}/${action}?sdkappid=${encodeURIComponent(account.sdkAppId ?? "")}&identifier=${encodeURIComponent(identifier)}&usersig=${encodeURIComponent(userSig)}&random=${random}&contenttype=json`;
-}
-
-function resolveOutboundSenderAccount(account: ResolvedTimbotAccount): string {
-  return account.botAccount || account.identifier || "administrator";
 }
 
 const TIMBOT_PARTIAL_STREAM_THROTTLE_MS = 1000;
@@ -166,54 +176,8 @@ function buildReplyRuntimeConfig(config: OpenClawConfig): {
   };
 }
 
-function mergeStreamingText(previousText: string | undefined, nextText: string | undefined): string {
-  const previous = typeof previousText === "string" ? previousText : "";
-  const next = typeof nextText === "string" ? nextText : "";
-  if (!next) {
-    return previous;
-  }
-  if (!previous || next === previous) {
-    return next;
-  }
-  if (next.startsWith(previous)) {
-    return next;
-  }
-  if (previous.startsWith(next)) {
-    return previous;
-  }
-  if (next.includes(previous)) {
-    return next;
-  }
-  if (previous.includes(next)) {
-    return previous;
-  }
-
-  const maxOverlap = Math.min(previous.length, next.length);
-  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
-    if (previous.slice(-overlap) === next.slice(0, overlap)) {
-      return `${previous}${next.slice(overlap)}`;
-    }
-  }
-  return `${previous}${next}`;
-}
-
 function estimateMsgBodyBytes(msgBody: TimbotMsgBodyElement[]): number {
   return Buffer.byteLength(JSON.stringify(msgBody), "utf8");
-}
-
-function splitTextByFixedLength(text: string, limit: number): string[] {
-  if (!text) {
-    return [];
-  }
-  if (limit <= 0 || text.length <= limit) {
-    return [text];
-  }
-
-  const chunks: string[] = [];
-  for (let index = 0; index < text.length; index += limit) {
-    chunks.push(text.slice(index, index + limit));
-  }
-  return chunks;
 }
 
 function isMsgTooLongError(error: string | undefined): boolean {
@@ -244,6 +208,28 @@ function resolveStreamingFinalText(streamVisibleText: string, streamFallbackText
     : streamVisibleText;
 }
 
+function summarizeTextChunks(chunks: string[]): string {
+  if (chunks.length === 0) {
+    return "chunkCount=0";
+  }
+  const counts = new Map<string, { count: number; length: number }>();
+  for (const chunk of chunks) {
+    const hash = createHash("sha1").update(chunk).digest("hex").slice(0, 10);
+    const existing = counts.get(hash);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      counts.set(hash, { count: 1, length: chunk.length });
+    }
+  }
+  const duplicates = [...counts.entries()]
+    .filter(([, item]) => item.count > 1)
+    .sort((a, b) => b[1].count - a[1].count || b[1].length - a[1].length)
+    .slice(0, 6)
+    .map(([hash, item]) => `${hash}x${item.count}(len=${item.length})`);
+  return `chunkCount=${chunks.length}, uniqueChunks=${counts.size}${duplicates.length > 0 ? `, duplicates=${duplicates.join(",")}` : ""}`;
+}
+
 function buildSnapshotStreamingMsgBody(params: {
   useCustomStreaming: boolean;
   text: string;
@@ -256,39 +242,6 @@ function buildSnapshotStreamingMsgBody(params: {
     isFinished: params.isFinished,
     typingText: params.typingText,
   });
-}
-
-function createPartialTextAccumulator() {
-  const committedSegments: string[] = [];
-  let currentPartialText = "";
-
-  const commitCurrentPartial = () => {
-    if (!currentPartialText) {
-      return;
-    }
-    if (committedSegments.at(-1) !== currentPartialText) {
-      committedSegments.push(currentPartialText);
-    }
-    currentPartialText = "";
-  };
-
-  const getVisibleText = () => {
-    const segments = currentPartialText
-      ? [...committedSegments, currentPartialText]
-      : [...committedSegments];
-    return segments.filter(Boolean).join("\n\n");
-  };
-
-  return {
-    noteAssistantMessageStart: () => {
-      commitCurrentPartial();
-    },
-    absorbPartial: (text: string) => {
-      currentPartialText = mergeStreamingText(currentPartialText, text);
-      return getVisibleText();
-    },
-    getVisibleText,
-  };
 }
 
 type LatestTextThrottleLoop = {
@@ -779,7 +732,7 @@ async function sendTimbotGroupStreamMessage(params: {
 
 async function modifyC2CMsg(params: {
   account: ResolvedTimbotAccount;
-  fromAccount: string;
+  fromAccount?: string;
   toAccount: string;
   msgKey: string;
   msgBody: TimbotMsgBodyElement[];
@@ -788,6 +741,11 @@ async function modifyC2CMsg(params: {
   const { account, fromAccount, toAccount, msgKey, msgBody, target } = params;
   const error = (msg: string) => target ? log(target, "error", msg) : logSimple("error", msg);
   const verbose = (msg: string) => target ? logVerbose(target, msg) : undefined;
+
+  if (!fromAccount) {
+    error("C2C 消息修改失败: 缺少机器人账号，无法确定 From_Account");
+    return { ok: false, error: "missing outbound sender account for c2c modify" };
+  }
 
   const url = buildTimbotApiUrl(account, "openim", "modify_c2c_msg");
   const body = {
@@ -931,6 +889,12 @@ async function executeStreamingReply(params: {
   let streamFailed = !useStreaming;
   let streamFailureReason: string | undefined;
   let streamOverflowed = false;
+  let overflowSplitActive = false;
+  let overflowVisibleText = "";
+  let overflowCommittedChunks: string[] = [];
+  let overflowFirstChunkCommitted = false;
+  let overflowTailMsgRef: StreamingMsgRef | undefined;
+  let overflowTailText = "";
   let lastSentVisibleText = "";
   const partialTextAccumulator = createPartialTextAccumulator();
   const streamFallbackTexts: string[] = [];
@@ -941,6 +905,20 @@ async function executeStreamingReply(params: {
   let assistantMessageStartAt: number | undefined;
   let partialReplyCount = 0;
   let firstPartialReplyAt: number | undefined;
+  const renderOutboundText = (text: string): string =>
+    core.channel.text.convertMarkdownTables(text, tableMode);
+  const buildRenderedTextMsgBody = (text: string): TimbotMsgBodyElement[] =>
+    buildTextMsgBody(renderOutboundText(text));
+  const buildRenderedSnapshotMsgBody = (params: {
+    useCustomStreaming: boolean;
+    text: string;
+    isFinished: 0 | 1;
+    typingText?: string;
+  }): TimbotMsgBodyElement[] =>
+    buildSnapshotStreamingMsgBody({
+      ...params,
+      text: renderOutboundText(params.text),
+    });
 
   const buildTimStreamRequest = (params: {
     markdown: string;
@@ -1023,6 +1001,12 @@ async function executeStreamingReply(params: {
       return false;
     }
 
+    log(
+      target,
+      "info",
+      `${L}分段发送准备: textLen=${text.length}, ${summarizeTextChunks(chunks)}`,
+    );
+
     if (useTimStream && timStreamMsgId) {
       const closed = await closeTimStream(lastSentVisibleText || typingText);
       if (closed) {
@@ -1037,7 +1021,7 @@ async function executeStreamingReply(params: {
       const firstChunk = chunks[0];
       const firstResult = await transport.modifyMsg({
         ref: streamMsgRef,
-        msgBody: buildTextMsgBody(firstChunk),
+        msgBody: buildRenderedTextMsgBody(firstChunk),
       });
       if (firstResult.ok) {
         target.statusSink?.({ lastOutboundAt: Date.now() });
@@ -1048,7 +1032,7 @@ async function executeStreamingReply(params: {
     }
 
     for (const chunk of chunks.slice(startIndex)) {
-      const result = await transport.sendText({ text: chunk });
+      const result = await transport.sendText({ text: renderOutboundText(chunk) });
       if (!result.ok) {
         streamFailureReason = result.error || streamFailureReason || `${L}长消息分段发送失败`;
         return false;
@@ -1057,6 +1041,213 @@ async function executeStreamingReply(params: {
     }
 
     return true;
+  };
+
+  const syncOverflowSplitState = async (forceFlush: boolean): Promise<boolean> => {
+    const chunks = splitFinalText(overflowVisibleText).filter((chunk) => chunk.length > 0);
+    if (chunks.length === 0) {
+      overflowCommittedChunks = [];
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+      return true;
+    }
+
+    const readyChunks = forceFlush ? chunks : chunks.slice(0, -1);
+    const committedCount = overflowCommittedChunks.length;
+    const committedPrefixMatches =
+      committedCount <= readyChunks.length
+      && overflowCommittedChunks.every((chunk, index) => readyChunks[index] === chunk);
+
+    if (!committedPrefixMatches) {
+      log(target, "warn", `${L}滚动续发分段边界发生漂移，停止继续拆分直到最终收尾`);
+      return true;
+    }
+
+    for (const chunk of readyChunks.slice(committedCount)) {
+      if (!overflowFirstChunkCommitted && !useTimStream && streamMsgRef) {
+        const firstResult = await transport.modifyMsg({
+          ref: streamMsgRef,
+          msgBody: buildRenderedTextMsgBody(chunk),
+        });
+        if (firstResult.ok) {
+          overflowFirstChunkCommitted = true;
+          overflowCommittedChunks.push(chunk);
+          lastSentVisibleText = chunk;
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+          continue;
+        }
+        log(target, "warn", `${L}超限续发首段覆盖占位消息失败，改为新消息发送: ${firstResult.error}`);
+      }
+
+      if (overflowTailMsgRef) {
+        const sealTailResult = await transport.modifyMsg({
+          ref: overflowTailMsgRef,
+          msgBody: buildRenderedTextMsgBody(chunk),
+        });
+        if (sealTailResult.ok) {
+          overflowTailMsgRef = undefined;
+          overflowTailText = "";
+          overflowCommittedChunks.push(chunk);
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+          continue;
+        }
+        log(target, "warn", `${L}超限续发尾段封板失败，改为新消息发送: ${sealTailResult.error}`);
+        overflowTailMsgRef = undefined;
+        overflowTailText = "";
+      }
+
+      const result = await transport.sendText({ text: renderOutboundText(chunk) });
+      if (!result.ok) {
+        streamFailureReason = result.error || streamFailureReason || `${L}超限续发失败`;
+        streamFailed = true;
+        return false;
+      }
+      overflowCommittedChunks.push(chunk);
+      target.statusSink?.({ lastOutboundAt: Date.now() });
+    }
+
+    if (forceFlush) {
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+      return true;
+    }
+
+    const liveTail = chunks.at(-1) ?? "";
+    if (!liveTail) {
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+      return true;
+    }
+
+    if (overflowTailMsgRef) {
+      if (overflowTailText === liveTail) {
+        return true;
+      }
+      const tailResult = await transport.modifyMsg({
+        ref: overflowTailMsgRef,
+        msgBody: buildRenderedTextMsgBody(liveTail),
+      });
+      if (tailResult.ok) {
+        overflowTailText = liveTail;
+        target.statusSink?.({ lastOutboundAt: Date.now() });
+        return true;
+      }
+      log(target, "warn", `${L}超限续发尾段更新失败，改为新尾消息: ${tailResult.error}`);
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+    }
+
+    const createTailResult = await transport.sendMsgBody({
+      msgBody: buildRenderedTextMsgBody(liveTail),
+    });
+    if (createTailResult.ok && createTailResult.ref) {
+      overflowTailMsgRef = createTailResult.ref;
+      overflowTailText = liveTail;
+      target.statusSink?.({ lastOutboundAt: Date.now() });
+      return true;
+    }
+
+    log(target, "warn", `${L}超限续发尾段创建失败: ${createTailResult.error || "未返回消息引用"}`);
+    overflowTailMsgRef = undefined;
+    overflowTailText = "";
+    return true;
+  };
+
+  const absorbOverflowVisibleText = async (visibleText: string, forceFlush: boolean): Promise<boolean> => {
+    if (!forceFlush && visibleText === overflowVisibleText) {
+      return true;
+    }
+    overflowVisibleText = visibleText;
+    return syncOverflowSplitState(forceFlush);
+  };
+
+  const activateOverflowSplit = async (visibleText: string, reason: string): Promise<boolean> => {
+    streamOverflowed = true;
+
+    if (overflowPolicy !== "split") {
+      streamFailureReason = reason;
+      log(target, "warn", reason);
+      streamFailed = true;
+      return false;
+    }
+
+    if (!overflowSplitActive) {
+      overflowSplitActive = true;
+      overflowVisibleText = "";
+      overflowCommittedChunks = [];
+      overflowFirstChunkCommitted = false;
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+      log(target, "warn", `${reason}，切换为分段续发`);
+
+      if (useTimStream && timStreamMsgId) {
+        const closed = await closeTimStream(lastSentVisibleText || typingText);
+        if (closed) {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        } else {
+          log(target, "warn", `${L}超限切换分段续发时流式收尾失败`);
+        }
+      } else if (useCustomStreaming && streamMsgRef && lastSentVisibleText) {
+        const finalizeResult = await transport.modifyMsg({
+          ref: streamMsgRef,
+          msgBody: buildRenderedSnapshotMsgBody({
+            useCustomStreaming: true,
+            text: lastSentVisibleText,
+            isFinished: 1,
+            typingText,
+          }),
+        });
+        if (finalizeResult.ok) {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        } else {
+          log(target, "warn", `${L}超限切换分段续发时 custom_modify 收尾失败: ${finalizeResult.error}`);
+        }
+      }
+    }
+
+    return absorbOverflowVisibleText(visibleText, false);
+  };
+
+  const activateProgressiveSplit = async (visibleText: string, reason: string): Promise<boolean> => {
+    if (overflowPolicy !== "split") {
+      return true;
+    }
+
+    if (!overflowSplitActive) {
+      overflowSplitActive = true;
+      overflowVisibleText = "";
+      overflowCommittedChunks = [];
+      overflowFirstChunkCommitted = false;
+      overflowTailMsgRef = undefined;
+      overflowTailText = "";
+      log(target, "info", `${reason} (visibleLen=${visibleText.length})`);
+
+      if (useTimStream && timStreamMsgId) {
+        const closed = await closeTimStream(lastSentVisibleText || typingText);
+        if (closed) {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        } else {
+          log(target, "warn", `${L}滚动续发切换时流式收尾失败`);
+        }
+      } else if (useCustomStreaming && streamMsgRef && lastSentVisibleText) {
+        const finalizeResult = await transport.modifyMsg({
+          ref: streamMsgRef,
+          msgBody: buildRenderedSnapshotMsgBody({
+            useCustomStreaming: true,
+            text: lastSentVisibleText,
+            isFinished: 1,
+            typingText,
+          }),
+        });
+        if (finalizeResult.ok) {
+          target.statusSink?.({ lastOutboundAt: Date.now() });
+        } else {
+          log(target, "warn", `${L}滚动续发切换时 custom_modify 收尾失败: ${finalizeResult.error}`);
+        }
+      }
+    }
+
+    return absorbOverflowVisibleText(visibleText, false);
   };
 
   const sendOverflowNotice = async (): Promise<boolean> => {
@@ -1070,7 +1261,7 @@ async function executeStreamingReply(params: {
     } else if (streamMsgRef && !lastSentVisibleText) {
       const replaceResult = await transport.modifyMsg({
         ref: streamMsgRef,
-        msgBody: buildTextMsgBody(TIMBOT_OVERFLOW_NOTICE_TEXT),
+        msgBody: buildRenderedTextMsgBody(TIMBOT_OVERFLOW_NOTICE_TEXT),
       });
       if (replaceResult.ok) {
         target.statusSink?.({ lastOutboundAt: Date.now() });
@@ -1080,7 +1271,7 @@ async function executeStreamingReply(params: {
     } else if (useCustomStreaming && streamMsgRef && lastSentVisibleText) {
       const finalizeResult = await transport.modifyMsg({
         ref: streamMsgRef,
-        msgBody: buildSnapshotStreamingMsgBody({
+        msgBody: buildRenderedSnapshotMsgBody({
           useCustomStreaming: true,
           text: lastSentVisibleText,
           isFinished: 1,
@@ -1112,6 +1303,17 @@ async function executeStreamingReply(params: {
             return true;
           }
 
+          if (!overflowSplitActive && overflowPolicy === "split") {
+            const splitChunks = splitFinalText(visibleText).filter((chunk) => chunk.length > 0);
+            if (splitChunks.length > 1) {
+              return activateProgressiveSplit(visibleText, `${L}流式文本达到分段阈值，开始滚动续发`);
+            }
+          }
+
+          if (overflowSplitActive) {
+            return absorbOverflowVisibleText(visibleText, false);
+          }
+
           if (useTimStream) {
             if (lastSentVisibleText && !visibleText.startsWith(lastSentVisibleText)) {
               streamFailureReason = `${L}流式快照与已发送文本不连续，停止 TIM stream 增量更新`;
@@ -1137,11 +1339,10 @@ async function executeStreamingReply(params: {
               streamMsgId: timStreamMsgId,
             });
             if (estimatedBytes > TIMBOT_STREAM_SOFT_LIMIT_BYTES) {
-              streamOverflowed = true;
-              streamFailureReason = `${L}流式消息接近长度上限，停止增量更新并改为最终分段发送 (bytes=${estimatedBytes})`;
-              log(target, "warn", streamFailureReason);
-              streamFailed = true;
-              return false;
+              return activateOverflowSplit(
+                visibleText,
+                `${L}流式消息接近长度上限，停止增量更新 (bytes=${estimatedBytes})`,
+              );
             }
 
             const result = await sendTimStreamChunk({
@@ -1161,32 +1362,34 @@ async function executeStreamingReply(params: {
               || streamFailureReason
               || (timStreamMsgId ? `${L}流式消息更新失败` : `${L}流式消息未返回 StreamMsgID`);
             if (isMsgTooLongError(result.error)) {
-              streamOverflowed = true;
+              return activateOverflowSplit(
+                visibleText,
+                `${L}流式消息更新超限，停止增量更新 (${result.error})`,
+              );
             }
             log(target, "warn", `${L}流式消息发送失败，等待最终收尾: ${streamFailureReason}`);
             streamFailed = true;
             return false;
           }
 
-          const msgBody = buildSnapshotStreamingMsgBody({
+          const renderedMsgBody = buildRenderedSnapshotMsgBody({
             useCustomStreaming,
             text: visibleText,
             isFinished: 0,
             typingText,
           });
-          const estimatedBytes = estimateMsgBodyBytes(msgBody);
+          const estimatedBytes = estimateMsgBodyBytes(renderedMsgBody);
           if (estimatedBytes > TIMBOT_STREAM_SOFT_LIMIT_BYTES) {
-            streamOverflowed = true;
-            streamFailureReason = `${L}流式消息接近长度上限，停止 modify 并改为最终分段发送 (bytes=${estimatedBytes})`;
-            log(target, "warn", streamFailureReason);
-            streamFailed = true;
-            return false;
+            return activateOverflowSplit(
+              visibleText,
+              `${L}流式消息接近长度上限，停止 modify (bytes=${estimatedBytes})`,
+            );
           }
 
           if (streamMsgRef) {
             const result = await transport.modifyMsg({
               ref: streamMsgRef,
-              msgBody,
+              msgBody: renderedMsgBody,
             });
 
             if (result.ok) {
@@ -1197,14 +1400,17 @@ async function executeStreamingReply(params: {
 
             streamFailureReason = result.error || streamFailureReason || `${L}流式消息更新失败`;
             if (isMsgTooLongError(result.error)) {
-              streamOverflowed = true;
+              return activateOverflowSplit(
+                visibleText,
+                `${L}流式消息 modify 超限，停止更新 (${result.error})`,
+              );
             }
             log(target, "warn", `${L}流式消息更新失败，等待最终收尾: ${streamFailureReason}`);
             streamFailed = true;
             return false;
           }
 
-          const result = await transport.sendMsgBody({ msgBody });
+          const result = await transport.sendMsgBody({ msgBody: renderedMsgBody });
 
           if (result.ok && result.ref) {
             streamMsgRef = result.ref;
@@ -1215,7 +1421,10 @@ async function executeStreamingReply(params: {
 
           streamFailureReason = result.error || streamFailureReason || `${L}流式消息创建失败`;
           if (isMsgTooLongError(result.error)) {
-            streamOverflowed = true;
+            return activateOverflowSplit(
+              visibleText,
+              `${L}流式消息创建超限，切换分段续发 (${result.error})`,
+            );
           }
           log(target, "warn", `${L}流式消息创建失败，等待最终收尾: ${streamFailureReason}`);
           streamFailed = true;
@@ -1240,7 +1449,7 @@ async function executeStreamingReply(params: {
     } else {
       const typingMsgBody = useCustomStreaming
         ? buildCustomMsgBody(buildBotStreamPayload([], 0, typingText))
-        : buildTextMsgBody(typingText);
+        : buildRenderedTextMsgBody(typingText);
       const typingResult = await transport.sendMsgBody({ msgBody: typingMsgBody });
       if (typingResult.ok && typingResult.ref) {
         streamMsgRef = typingResult.ref;
@@ -1271,7 +1480,7 @@ async function executeStreamingReply(params: {
         : undefined,
       onPartialReply: useStreaming
         ? (payload: { text?: string }) => {
-            const text = core.channel.text.convertMarkdownTables(payload.text ?? "", tableMode);
+            const text = payload.text ?? "";
             if (!text) {
               return;
             }
@@ -1291,18 +1500,19 @@ async function executeStreamingReply(params: {
     },
     dispatcherOptions: {
       deliver: async (payload: { text?: string }, info: { kind: string }) => {
-        const text = core.channel.text.convertMarkdownTables(payload.text ?? "", tableMode);
+        const rawText = payload.text ?? "";
         if (useStreaming) {
           logVerbose(
             target,
-            `[partialStream] ${L}dispatcher deliver kind=${info.kind}: len=${text.length}, trimEmpty=${!text.trim()}, streamFailed=${streamFailed}, t=${Date.now()}`,
+            `[partialStream] ${L}dispatcher deliver kind=${info.kind}: len=${rawText.length}, trimEmpty=${!rawText.trim()}, streamFailed=${streamFailed}, t=${Date.now()}`,
           );
-          if (text.trim()) {
-            streamFallbackTexts.push(text);
+          if (rawText.trim()) {
+            streamFallbackTexts.push(rawText);
           }
           return;
         }
 
+        const text = renderOutboundText(rawText);
         if (!text.trim()) {
           return;
         }
@@ -1340,10 +1550,11 @@ async function executeStreamingReply(params: {
       : undefined;
 
   if (useStreaming) {
-    logVerbose(
-      target,
-      `[partialStream] ${L}summary: assistantStarts=${assistantMessageStartCount}, partialCount=${partialReplyCount}, firstPartialLatencyMs=${firstPartialLatencyMs ?? "n/a"}, visibleLen=${streamVisibleText.length}, fallbackLen=${streamFallbackText.length}, streamFailed=${streamFailed}, overflowed=${streamOverflowed}, t=${Date.now()}`,
-    );
+    const partialSummary = `[partialStream] ${L}summary: assistantStarts=${assistantMessageStartCount}, partialCount=${partialReplyCount}, firstPartialLatencyMs=${firstPartialLatencyMs ?? "n/a"}, visibleLen=${streamVisibleText.length}, fallbackLen=${streamFallbackText.length}, streamFailed=${streamFailed}, overflowed=${streamOverflowed}, splitActive=${overflowSplitActive}, committedChunks=${overflowCommittedChunks.length}, tailLen=${overflowTailText.length}, t=${Date.now()}`;
+    logVerbose(target, partialSummary);
+    if (partialReplyCount === 0 || overflowSplitActive || streamOverflowed) {
+      log(target, "info", partialSummary);
+    }
   }
 
   if (
@@ -1354,6 +1565,13 @@ async function executeStreamingReply(params: {
     )
   ) {
     const fullText = resolveStreamingFinalText(streamVisibleText, streamFallbackText);
+    if (fullText.length > TIMBOT_FINAL_TEXT_CHUNK_LIMIT || streamFallbackText.length > TIMBOT_FINAL_TEXT_CHUNK_LIMIT) {
+      log(
+        target,
+        "info",
+        `${L}流式收尾: fullTextLen=${fullText.length}, visibleLen=${streamVisibleText.length}, fallbackLen=${streamFallbackText.length}, partialCount=${partialReplyCount}, assistantStarts=${assistantMessageStartCount}`,
+      );
+    }
     if (assistantMessageStartCount > 0 && partialReplyCount === 0 && fullText.trim()) {
       log(
         target,
@@ -1363,6 +1581,10 @@ async function executeStreamingReply(params: {
     }
     let finalized = false;
     let overflowStopHandled = false;
+    if (overflowSplitActive) {
+      overflowStopHandled = true;
+      finalized = await absorbOverflowVisibleText(fullText, true);
+    }
     const handleOverflow = async (): Promise<boolean> => {
       if (overflowPolicy === "split" && fullText) {
         return sendChunkedFinalText(fullText);
@@ -1371,7 +1593,7 @@ async function executeStreamingReply(params: {
       return sendOverflowNotice();
     };
     const finalSnapshotMsgBody = !useTimStream
-      ? buildSnapshotStreamingMsgBody({
+      ? buildRenderedSnapshotMsgBody({
           useCustomStreaming,
           text: fullText,
           isFinished: 1,
@@ -1453,7 +1675,7 @@ async function executeStreamingReply(params: {
         }
       }
     } else if (!overflowStopHandled && !finalized) {
-      const finalMsgBody = finalSnapshotMsgBody ?? buildSnapshotStreamingMsgBody({
+      const renderedFinalMsgBody = finalSnapshotMsgBody ?? buildRenderedSnapshotMsgBody({
         useCustomStreaming,
         text: fullText,
         isFinished: 1,
@@ -1463,7 +1685,7 @@ async function executeStreamingReply(params: {
       if (streamMsgRef) {
         const finalResult = await transport.modifyMsg({
           ref: streamMsgRef,
-          msgBody: finalMsgBody,
+          msgBody: renderedFinalMsgBody,
         });
         if (finalResult.ok) {
           finalized = true;
@@ -1479,7 +1701,7 @@ async function executeStreamingReply(params: {
           }
         }
       } else if (fullText) {
-        const finalSendResult = await transport.sendMsgBody({ msgBody: finalMsgBody });
+        const finalSendResult = await transport.sendMsgBody({ msgBody: renderedFinalMsgBody });
         if (finalSendResult.ok && finalSendResult.ref) {
           streamMsgRef = finalSendResult.ref;
           finalized = true;
@@ -1503,7 +1725,7 @@ async function executeStreamingReply(params: {
       if (streamMsgRef && useCustomStreaming) {
         const recoverResult = await transport.modifyMsg({
           ref: streamMsgRef,
-          msgBody: buildTextMsgBody(fullText),
+          msgBody: buildRenderedTextMsgBody(fullText),
         });
         if (recoverResult.ok) {
           recovered = true;
@@ -1518,7 +1740,7 @@ async function executeStreamingReply(params: {
         if (streamOverflowed) {
           finalized = await handleOverflow();
         } else {
-          const fallbackResult = await transport.sendText({ text: fullText });
+          const fallbackResult = await transport.sendText({ text: renderOutboundText(fullText) });
           if (fallbackResult.ok) {
             finalized = true;
             target.statusSink?.({ lastOutboundAt: Date.now() });
@@ -1607,9 +1829,10 @@ async function processAndReply(params: {
   const account = target.account;
 
   const fromAccount = msg.From_Account?.trim() || "unknown";
-  const outboundSender = resolveOutboundSenderAccount(account);
+  const inboundBotAccount = msg.To_Account?.trim() || undefined;
+  const outboundFromAccount = resolveOutboundFromAccount(account, inboundBotAccount);
 
-  if (fromAccount === outboundSender) {
+  if (isSelfInboundMessage(account, fromAccount, inboundBotAccount ? [inboundBotAccount] : [])) {
     log(target, "info", `跳过机器人自身消息 <- ${fromAccount}`);
     return;
   }
@@ -1686,15 +1909,14 @@ async function processAndReply(params: {
     },
   });
 
-  const tableMode = core.channel.text.resolveMarkdownTableMode({
-    cfg: config,
-    channel: "timbot",
-    accountId: account.accountId,
-  });
+  // TIM clients in this workflow are expected to render raw markdown tables.
+  // The generic OpenClaw default ("code") converts them into fenced text,
+  // which breaks the user's expected table rendering.
+  const tableMode = "off";
   const finalTextChunkLimit = core.channel.text.resolveTextChunkLimit(config, "timbot", account.accountId, {
     fallbackLimit: TIMBOT_FINAL_TEXT_CHUNK_LIMIT,
   });
-  const splitFinalText = (text: string) => splitTextByFixedLength(text, finalTextChunkLimit);
+  const splitFinalText = (text: string) => splitTextByPreferredBreaks(text, finalTextChunkLimit);
 
   logVerbose(target, `开始生成回复 -> ${fromAccount}`);
   logVerbose(target, `转发给 OpenClaw: RawBody=${rawBody.slice(0, 100)}, SessionKey=${ctxPayload.SessionKey}, From=${ctxPayload.From}`);
@@ -1706,7 +1928,7 @@ async function processAndReply(params: {
       sendTimbotC2CStreamMessage({
         account,
         toAccount: fromAccount,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
         ...p,
       }),
@@ -1714,7 +1936,7 @@ async function processAndReply(params: {
       const ref = p.ref as { kind: "c2c"; msgKey: string };
       return modifyC2CMsg({
         account,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         toAccount: fromAccount,
         msgKey: ref.msgKey,
         msgBody: p.msgBody,
@@ -1726,7 +1948,7 @@ async function processAndReply(params: {
         account,
         toAccount: fromAccount,
         msgBody: p.msgBody,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
       });
       return {
@@ -1740,7 +1962,7 @@ async function processAndReply(params: {
         account,
         toAccount: fromAccount,
         text: p.text,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
       }),
   };
@@ -1784,9 +2006,10 @@ async function processGroupAndReply(params: {
 
   const groupId = msg.GroupId?.trim() || "unknown";
   const fromAccount = msg.From_Account?.trim() || "unknown";
-  const outboundSender = resolveOutboundSenderAccount(account);
+  const inboundBotAccount = msg.To_Account?.trim() || undefined;
+  const outboundFromAccount = resolveOutboundFromAccount(account, inboundBotAccount);
 
-  if (fromAccount === outboundSender) {
+  if (isSelfInboundMessage(account, fromAccount, inboundBotAccount ? [inboundBotAccount] : [])) {
     log(target, "info", `跳过机器人自身消息 <- group:${groupId}, from: ${fromAccount}`);
     return;
   }
@@ -1866,15 +2089,11 @@ async function processGroupAndReply(params: {
     },
   });
 
-  const tableMode = core.channel.text.resolveMarkdownTableMode({
-    cfg: config,
-    channel: "timbot",
-    accountId: account.accountId,
-  });
+  const tableMode = "off";
   const finalTextChunkLimit = core.channel.text.resolveTextChunkLimit(config, "timbot", account.accountId, {
     fallbackLimit: TIMBOT_FINAL_TEXT_CHUNK_LIMIT,
   });
-  const splitFinalText = (text: string) => splitTextByFixedLength(text, finalTextChunkLimit);
+  const splitFinalText = (text: string) => splitTextByPreferredBreaks(text, finalTextChunkLimit);
 
   logVerbose(target, `开始生成群回复 -> group:${groupId}`);
 
@@ -1885,7 +2104,7 @@ async function processGroupAndReply(params: {
       sendTimbotGroupStreamMessage({
         account,
         groupId,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
         ...p,
       }),
@@ -1904,7 +2123,7 @@ async function processGroupAndReply(params: {
         account,
         groupId,
         msgBody: p.msgBody,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
       });
       return {
@@ -1918,7 +2137,7 @@ async function processGroupAndReply(params: {
         account,
         groupId,
         text: p.text,
-        fromAccount: outboundSender,
+        fromAccount: outboundFromAccount,
         target,
       }),
   };

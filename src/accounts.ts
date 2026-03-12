@@ -9,6 +9,7 @@ import type {
   TimbotStreamingFallbackPolicy,
   TimbotStreamingMode,
 } from "./types.js";
+import { normalizeOptionalText } from "./config-text.js";
 import { logSimple } from "./logger.js";
 
 const DEFAULT_API_DOMAIN = "console.tim.qq.com";
@@ -62,12 +63,12 @@ export function resolveTimbotAccount(params: {
   const enabled = baseEnabled && merged.enabled !== false;
 
   // 从合并后的配置中提取字段
-  const sdkAppId = merged.sdkAppId?.trim() || undefined;
-  const identifier = merged.identifier?.trim() || undefined;
-  const secretKey = merged.secretKey?.trim() || undefined;
-  const botAccount = merged.botAccount?.trim() || undefined;
-  const apiDomain = merged.apiDomain?.trim() || DEFAULT_API_DOMAIN;
-  const token = merged.token?.trim() || undefined;
+  const sdkAppId = normalizeOptionalText(merged.sdkAppId);
+  const identifier = normalizeOptionalText(merged.identifier);
+  const secretKey = normalizeOptionalText(merged.secretKey);
+  const botAccount = normalizeOptionalText(merged.botAccount);
+  const apiDomain = normalizeOptionalText(merged.apiDomain) || DEFAULT_API_DOMAIN;
+  const token = normalizeOptionalText(merged.token);
   const streamingMode: TimbotStreamingMode =
     merged.streamingMode === "custom_modify"
       ? "custom_modify"
@@ -82,6 +83,7 @@ export function resolveTimbotAccount(params: {
       : "strict";
   const overflowPolicy: TimbotOverflowPolicy =
     merged.overflowPolicy === "split"
+      || !merged.overflowPolicy
       ? "split"
       : "stop";
 
@@ -100,7 +102,7 @@ export function resolveTimbotAccount(params: {
 
   return {
     accountId,
-    name: merged.name?.trim() || undefined,
+    name: normalizeOptionalText(merged.name),
     enabled,
     configured,
     sdkAppId,

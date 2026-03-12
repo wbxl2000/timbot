@@ -45,7 +45,7 @@ bash install-timbot.sh
 | `typingText` | 机器人生成中占位文案（非流式模式下通过发送占位消息 + modify 实现；流式模式下作为 CompatibleText） | `正在思考中...` |
 | `streamingMode` | 流式模式：`off` / `text_modify` / `custom_modify` / `tim_stream` | `off` |
 | `fallbackPolicy` | 流式失败兜底策略：`strict`（不降级）/ `final_text`（降级为最终文本） | `strict` |
-| `overflowPolicy` | 流式超限后的处理策略：`stop`（停止并提示，默认）/ `split`（按长度强行分段续发） | `stop` |
+| `overflowPolicy` | 流式超限后的处理策略：`stop`（停止并提示）/ `split`（按长度分段续发，默认） | `split` |
 
 ### 私聊策略（dm）
 
@@ -93,10 +93,10 @@ openclaw config set channels.timbot.streamingMode off
 # 设置失败兜底策略为降级发送最终文本
 openclaw config set channels.timbot.fallbackPolicy final_text
 
-# 长文本超限后直接停止并提示（默认）
+# 长文本超限后直接停止并提示
 openclaw config set channels.timbot.overflowPolicy stop
 
-# 长文本超限后按长度继续分段发送
+# 长文本超限后按长度继续分段发送（默认）
 openclaw config set channels.timbot.overflowPolicy split
 
 # 自定义占位文案

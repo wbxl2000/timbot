@@ -12,7 +12,7 @@ export type TimbotAccountConfig = {
   enabled?: boolean;
 
   webhookPath?: string;
-  sdkAppId?: string;
+  sdkAppId?: string | number;
   identifier?: string;
   secretKey?: string;
   botAccount?: string;
