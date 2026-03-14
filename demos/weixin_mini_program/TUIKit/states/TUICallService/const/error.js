@@ -1,0 +1,2 @@
+"use strict";const A={MICROPHONE_UNAVAILABLE:60003,CAMERA_UNAVAILABLE:60004,BAN_DEVICE:60005,ERROR_BLACKLIST:20007},E={MICROPHONE_UNAVAILABLE:"microphone-unavailable",CAMERA_UNAVAILABLE:"camera-unavailable",BAN_DEVICE:"ban-device",ERROR_BLACKLIST:"blacklist-user-tips"};exports.ErrorCode=A;exports.ErrorMessage=E;
+//# sourceMappingURL=../../../../../.sourcemap/mp-weixin/TUIKit/states/TUICallService/const/error.js.map

@@ -1,0 +1,2 @@
+"use strict";const e=require("../../../common/vendor.js"),n=require("../../../common/assets.js"),o=e.defineComponent({__name:"Avatar",props:{src:{type:String,default:n.defaultAvatarIcon},avatarStyle:{type:[String,Object],default:()=>({})}},setup(a){const t=e.ref(""),r=a;e.watch(()=>r.src,()=>{t.value=r.src},{immediate:!0});function c(){t.value=n.defaultAvatarIcon}return(s,u)=>({a:e.s(a.avatarStyle),b:t.value,c:e.o(c)})}});wx.createComponent(o);
+//# sourceMappingURL=../../../../.sourcemap/mp-weixin/TUIKit/components/Avatar/Avatar.js.map

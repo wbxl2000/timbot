@@ -1,0 +1,2 @@
+"use strict";const t=require("./common-utils.js"),f=function(e){if(e===null||typeof e>"u")return!0;if(typeof e=="boolean")return!1;if(typeof e=="number")return e===0;if(typeof e=="string"||typeof e=="function"||Array.isArray(e))return e.length===0;if(e instanceof Error)return e.message==="";if(t.isPlainObject(e)){for(const r in e)if(Object.prototype.hasOwnProperty.call(e,r))return!1;return!0}return!1};exports.isEmpty=f;
+//# sourceMappingURL=../../../../../.sourcemap/mp-weixin/TUIKit/states/chat-uikit-engine-lite/utils/is-empty.js.map
