@@ -1,0 +1,1 @@
+<view wx:if="{{a}}" class="{{['message-status', 'data-v-e107af5e', e]}}"><view wx:if="{{b}}" class="status-loading data-v-e107af5e"><image class="data-v-e107af5e" src="{{c}}"/></view><view wx:if="{{d}}" class="status-fail data-v-e107af5e"><text class="data-v-e107af5e">!</text></view></view>

@@ -1,0 +1,1 @@
+<view class="{{['bubble', 'data-v-c4308549', c && 'bubble-me']}}"><text class="text data-v-c4308549" style="{{'word-break:' + b}}">{{a}}</text></view>

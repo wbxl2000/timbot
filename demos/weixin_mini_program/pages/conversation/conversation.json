@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "会话列表",
+  "usingComponents": {
+    "conversation": "../../TUIKit/components/ConversationList/ConversationList"
+  }
+}

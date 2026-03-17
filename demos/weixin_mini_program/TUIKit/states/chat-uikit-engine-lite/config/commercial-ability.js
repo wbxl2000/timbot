@@ -1,0 +1,2 @@
+"use strict";const e={enabledMessageReadReceipt:Math.pow(2,5),enabledEmojiPlugin:Math.pow(2,48),enabledOnlineStatus:Math.pow(2,7),enabledCustomerServicePlugin:Math.pow(2,40),enabledTranslationPlugin:Math.pow(2,38),enabledVoiceToText:Math.pow(2,39)};exports.commercialAbility=e;
+//# sourceMappingURL=../../../../../.sourcemap/mp-weixin/TUIKit/states/chat-uikit-engine-lite/config/commercial-ability.js.map

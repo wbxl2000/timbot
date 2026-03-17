@@ -1,0 +1,2 @@
+"use strict";const t=require("../utils/env.js");class e{constructor(){this.global=t.APP_NAMESPACE,this.isOfficial=!1}static getInstance(){return e.instance||(e.instance=new e),e.instance}initOfficial(i){this.isOfficial=i}getPlatform(){let i="";return t.IS_PC?i="pc":t.IS_H5?i="h5":t.IN_WX_MINI_APP?i="wechat":t.IN_UNI_NATIVE_APP&&!t.IN_WX_MINI_APP&&(i="app"),i}}exports.TUIGlobal=e;
+//# sourceMappingURL=../../../../../.sourcemap/mp-weixin/TUIKit/states/chat-uikit-engine-lite/TUIGlobal/tui-global.js.map

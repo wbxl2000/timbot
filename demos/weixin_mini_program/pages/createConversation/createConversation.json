@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "创建会话",
+  "usingComponents": {
+    "user-picker": "../../TUIKit/components/UserPicker/UserPicker"
+  }
+}

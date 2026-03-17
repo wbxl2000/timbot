@@ -1,0 +1,2 @@
+"use strict";const m={UNI_MINI_APP:"45"};var E=(I=>(I.MSG_TEXT="TIMTextElem",I.MSG_CUSTOM="TIMCustomElem",I.MSG_IMAGE="TIMImageElem",I.MSG_VIDEO="TIMVideoFileElem",I.MSG_GRP_TIP="TIMGroupTipElem",I))(E||{}),M=(I=>(I.TEXT="text",I.IMAGE="image",I.VIDEO="video",I.FILE="file",I.MENTION="mention",I.EMOJI="emoji",I))(M||{});exports.MessageContentType=M;exports.MessageType=E;exports.UI_PLATFORM=m;
+//# sourceMappingURL=../../../.sourcemap/mp-weixin/TUIKit/constants/chat.js.map

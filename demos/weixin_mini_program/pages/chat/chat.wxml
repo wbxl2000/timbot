@@ -1,0 +1,1 @@
+<view class="TUIChat data-v-0a633310"><view wx:if="{{a}}" class="more-float data-v-0a633310" bindtap="{{b}}"><view class="more-text data-v-0a633310">更多</view></view><message-list class="data-v-0a633310" u-i="0a633310-0" bind:__l="__l"/><message-input class="data-v-0a633310" u-i="0a633310-1" bind:__l="__l"/></view>
