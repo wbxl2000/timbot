@@ -6,6 +6,7 @@ extensions/
 openclaw-src/
 .claude/
 openclaw-source-code/
+.tempurai/
 
 node_modules
 package-lock.json

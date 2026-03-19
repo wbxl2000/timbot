@@ -97,7 +97,7 @@ channels:
 
 ### Web Demo 客户端侧
 
-Web Demo（`demos/openclaw-im-demo`，Vite + Vue 3 + TS）实现了 `custom_modify` 模式的客户端渲染：
+Web Demo（`demos/web-im-demo`，Vite + Vue 3 + TS）实现了 `custom_modify` 模式的客户端渲染：
 
 - `CustomMessage.vue` 解析 `TIMCustomElem` 的 `chatbotPlugin: 2` 协议，区分流式消息 (`src: 2`) 和错误状态 (`src: 23`)
 - `StreamMessage.vue` 渲染 `chunks` 拼接文本 + 闪烁光标动画，`isFinished=1` 时光标消失
@@ -195,7 +195,7 @@ pnpm build && pnpm publish --access public --no-git-checks
 
 ### 中等优先级
 
-- **多机器人账号支持**（`notes/muti-agent.md`）
+- **多机器人账号支持**（`notes/multi-agent.md`）
   支持同一 IM 应用下多个 `@RBT#xxx` 账号，每个账号绑定一个 agent，实现"不同会话切换不同 AI 助手"的飞书模式体验。
   方案：新增 `bots` 配置字段，Webhook 路由按 `To_Account` 找对应 bot → agentId。
 

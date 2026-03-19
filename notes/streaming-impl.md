@@ -22,7 +22,7 @@
 
 ---
 
-## 一、Web Demo（`demos/openclaw-im-demo`）— 客户端侧
+## 一、Web Demo（`demos/web-im-demo`）— 客户端侧
 
 Web Demo 是 **Vite + Vue 3 + TS** 项目，基于 `@tencentcloud/chat-uikit-vue3` 的 TUIKit 组件库，**只实现了 `custom_modify` 模式的客户端渲染**。
 
