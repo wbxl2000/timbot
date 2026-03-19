@@ -14,6 +14,12 @@ import { getTimbotRuntime } from "./runtime.js";
 import { genTestUserSig } from "./debug/GenerateTestUserSig-es.js";
 import { LOG_PREFIX, logSimple } from "./logger.js";
 import {
+  extractMentionedBotAccounts,
+  extractTextFromMsgBody,
+  matchTimbotWebhookTargetsBySdkAppId,
+  selectTimbotWebhookTarget,
+} from "./inbound-routing.js";
+import {
   allowsFinalTextRecovery,
   buildBotErrorPayload,
   buildBotStreamPayload,
@@ -1566,36 +1572,6 @@ async function executeStreamingReply(params: {
   }
 }
 
-// 从 MsgBody 提取文本内容
-function extractTextFromMsgBody(msgBody?: Array<{ MsgType: string; MsgContent: { Text?: string } }>): string {
-  if (!msgBody || !Array.isArray(msgBody)) return "";
-
-  const texts: string[] = [];
-  for (const elem of msgBody) {
-    if (elem.MsgType === "TIMTextElem" && elem.MsgContent?.Text) {
-      texts.push(elem.MsgContent.Text);
-    } else if (elem.MsgType === "TIMCustomElem") {
-      texts.push("[custom]");
-    } else if (elem.MsgType === "TIMImageElem") {
-      texts.push("[image]");
-    } else if (elem.MsgType === "TIMSoundElem") {
-      texts.push("[voice]");
-    } else if (elem.MsgType === "TIMFileElem") {
-      texts.push("[file]");
-    } else if (elem.MsgType === "TIMVideoFileElem") {
-      texts.push("[video]");
-    } else if (elem.MsgType === "TIMFaceElem") {
-      texts.push("[face]");
-    } else if (elem.MsgType === "TIMLocationElem") {
-      texts.push("[location]");
-    } else if (elem.MsgType === "TIMStreamElem") {
-      texts.push("[stream]");
-    }
-  }
-
-  return texts.join("\n");
-}
-
 // 处理消息并回复
 async function processAndReply(params: {
   target: TimbotWebhookTarget;
@@ -1855,6 +1831,7 @@ async function processGroupAndReply(params: {
     MessageSid: msg.MsgKey ?? String(msg.MsgSeq ?? ""),
     OriginatingChannel: "timbot",
     OriginatingTo: `timbot:group:${groupId}`,
+    WasMentioned: true,
   });
 
   await core.channel.session.recordInboundSession({
@@ -1971,8 +1948,6 @@ export async function handleTimbotWebhookRequest(
   const targets = webhookTargets.get(path);
   if (!targets || targets.length === 0) return false;
 
-  const firstTarget = targets[0]!;
-
   // 只处理 POST 请求
   if (req.method !== "POST") {
     logSimple("warn", `收到非 POST 请求: ${req.method} ${path}`);
@@ -1999,28 +1974,17 @@ export async function handleTimbotWebhookRequest(
   }
 
   const msg = bodyResult.value as TimbotInboundMessage;
-
-  // 根据 SdkAppid 或 To_Account 匹配目标账号
-  const target = targets.find((candidate) => {
-    if (!candidate.account.configured) return false;
-    // 如果 URL 带了 SdkAppid，校验是否匹配
-    if (sdkAppId && candidate.account.sdkAppId !== sdkAppId) return false;
-    // 如果配置了 botAccount，校验 To_Account 是否匹配
-    if (candidate.account.botAccount && msg.To_Account) {
-      return candidate.account.botAccount === msg.To_Account;
-    }
-    return true;
-  }) ?? firstTarget;
-
-  if (!target.account.configured) {
-    logSimple("warn", `账号 ${target.account.accountId} 未配置，跳过处理`);
-    // 即使未配置也返回成功，避免腾讯 IM 重试
-    jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
-    return true;
+  logSimple("info", `webhook 消息详情: callback=${msg.CallbackCommand || "-"}, To_Account=${msg.To_Account || "-"}, AtRobots_Account=${JSON.stringify(msg.AtRobots_Account ?? [])}, From_Account=${msg.From_Account || "-"}, GroupId=${msg.GroupId || "-"}`);
+  const sdkMatchedTargets = matchTimbotWebhookTargetsBySdkAppId(targets, sdkAppId);
+  let target = selectTimbotWebhookTarget({ targets: sdkMatchedTargets, msg });
+  if (!target && sdkMatchedTargets.length === 1) {
+    target = sdkMatchedTargets[0];
   }
 
   // 签名验证
-  if (target.account.token) {
+  const signatureTargets = (target ? [target] : sdkMatchedTargets)
+    .filter((candidate) => candidate.account.configured && candidate.account.token);
+  if (signatureTargets.length > 0) {
     // 1. 超时校验：RequestTime 与当前时间相差超过 60 秒则拒绝
     const requestTimestamp = parseInt(requestTime, 10);
     const nowTimestamp = Math.floor(Date.now() / 1000);
@@ -2033,21 +1997,49 @@ export async function handleTimbotWebhookRequest(
     }
 
     // 2. 签名校验：sha256(token + requestTime)
-    const expectedSign = createHash("sha256")
-      .update(target.account.token + requestTime)
-      .digest("hex");
-    if (
-      sign.length !== expectedSign.length
-      || !timingSafeEqual(Buffer.from(sign), Buffer.from(expectedSign))
-    ) {
+    const verifiedTargets = signatureTargets.filter((candidate) => {
+      const expectedSign = createHash("sha256")
+        .update(candidate.account.token + requestTime)
+        .digest("hex");
+      return (
+        sign.length === expectedSign.length
+        && timingSafeEqual(Buffer.from(sign), Buffer.from(expectedSign))
+      );
+    });
+    if (verifiedTargets.length === 0) {
+      const expectedSign = createHash("sha256")
+        .update(signatureTargets[0]!.account.token + requestTime)
+        .digest("hex");
       logSimple("error", `签名验证失败: 收到=${sign.slice(0, 16)}..., 预期=${expectedSign.slice(0, 16)}...`);
       res.statusCode = 403;
       res.end("Signature verification failed");
       return true;
     }
+    if (!target && verifiedTargets.length === 1) {
+      target = verifiedTargets[0];
+    }
+  }
+
+  if (!target) {
+    const callbackCommand = msg.CallbackCommand ?? "";
+    const mentions = extractMentionedBotAccounts(extractTextFromMsgBody(msg.MsgBody));
+    logSimple(
+      "warn",
+      `未能唯一匹配 webhook 账号，跳过处理: callback=${callbackCommand || "-"}, sdkAppId=${sdkAppId || "-"}, to=${msg.To_Account?.trim() || "-"}, group=${msg.GroupId?.trim() || "-"}, mentions=${mentions.join(",") || "-"}`,
+    );
+    jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
+    return true;
+  }
+
+  if (!target.account.configured) {
+    logSimple("warn", `账号 ${target.account.accountId} 未配置，跳过处理`);
+    // 即使未配置也返回成功，避免腾讯 IM 重试
+    jsonOk(res, { ActionStatus: "OK", ErrorCode: 0, ErrorInfo: "" });
+    return true;
   }
 
   target.statusSink?.({ lastInboundAt: Date.now() });
+  logSimple("info", `匹配到账号: ${target.account.accountId}, botAccount=${target.account.botAccount || "-"}`);
 
   const callbackCommand = msg.CallbackCommand ?? "";
 

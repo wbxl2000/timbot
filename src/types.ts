@@ -64,6 +64,7 @@ export type TimbotInboundMessage = {
   CallbackCommand?: string;
   From_Account?: string;
   To_Account?: string;
+  AtRobots_Account?: string[];
   GroupId?: string;
   GroupName?: string;
   MsgSeq?: number;

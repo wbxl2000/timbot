@@ -83,6 +83,7 @@ const loading = ref(false);
 const friendKeyword = ref('');
 const selectedC2CUserId = ref('');
 const selectedGroupMemberIds = ref<string[]>([]);
+const extraMemberIds = ref('');
 const groupName = ref('');
 const robotId = ref('');
 
@@ -136,6 +137,7 @@ const resetState = () => {
   friendKeyword.value = '';
   selectedC2CUserId.value = '';
   selectedGroupMemberIds.value = [];
+  extraMemberIds.value = '';
   groupName.value = '';
   robotId.value = '';
   emit('update:visible', false);
@@ -215,8 +217,14 @@ const handleCreateSingleConversation = async () => {
 };
 
 const handleCreateGroupConversation = async () => {
-  if (selectedGroupMemberIds.value.length === 0) {
-    TUIToast.error({ message: '请选择至少一个群成员' });
+  const parsedExtraIds = extraMemberIds.value
+    .split(/[,，\s]+/)
+    .map(id => id.trim())
+    .filter(Boolean);
+  const allMemberIds = [...new Set([...selectedGroupMemberIds.value, ...parsedExtraIds])];
+
+  if (allMemberIds.length === 0) {
+    TUIToast.error({ message: '请选择或输入至少一个群成员' });
     return;
   }
 
@@ -224,7 +232,7 @@ const handleCreateGroupConversation = async () => {
     name: groupName.value.trim() || generateGroupName(),
     type: 'Private',
     joinOption: 'DisableApply',
-    memberList: selectedGroupMemberIds.value.map(userID => ({ userID })),
+    memberList: allMemberIds.map(userID => ({ userID })),
   });
 
   loading.value = true;
@@ -391,9 +399,14 @@ const handleConfirm = async () => {
             placeholder="群名称，留空时自动生成"
           />
           <TUIInput
+            v-model="extraMemberIds"
+            :disabled="loading"
+            placeholder="输入用户 ID 添加额外成员，多个用逗号分隔"
+          />
+          <TUIInput
             v-model="friendKeyword"
             :disabled="loading"
-            placeholder="搜索群成员昵称或 ID"
+            placeholder="搜索好友昵称或 ID"
           />
           <TUISelect
             v-model="selectedGroupMemberIds"

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { h, ref, watch } from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import { TUICallKit } from '@tencentcloud/call-uikit-vue';
 import {
   ConversationList,
@@ -20,8 +20,9 @@ import {
   useUIKit,
   ChatHeader,
   useConversationListState,
+  useGroupSettingState,
 } from '@tencentcloud/chat-uikit-vue3';
-import { IconMenu, IconHistory3 } from '@tencentcloud/uikit-base-component-vue3';
+import { IconMenu, IconHistory3, TUIDialog, TUIInput, TUIToast } from '@tencentcloud/uikit-base-component-vue3';
 import { PlaceholderEmpty } from './components/PlaceholderEmpty';
 import RobotConversationCreate from './components/RobotConversationCreate.vue';
 import { SideTab } from './components/SideTab';
@@ -35,6 +36,39 @@ const ConversationCreateComponent = RobotConversationCreate as any;
 
 const { t, theme } = useUIKit();
 const { activeConversation } = useConversationListState();
+const { groupID, addGroupMember } = useGroupSettingState();
+
+const isGroupChat = computed(() => Boolean(groupID.value));
+
+const isInviteDialogVisible = ref(false);
+const inviteUserIds = ref('');
+const inviteLoading = ref(false);
+
+const handleInviteMembers = async () => {
+  const ids = inviteUserIds.value
+    .split(/[,，\s]+/)
+    .map(id => id.trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    TUIToast.error({ message: '请输入至少一个用户 ID' });
+    return;
+  }
+  inviteLoading.value = true;
+  try {
+    const result = await addGroupMember({ userIDList: ids });
+    if (result.data.successUserIDList.length < ids.length) {
+      TUIToast.warning({ message: `部分用户添加失败，成功 ${result.data.successUserIDList.length}/${ids.length}` });
+    } else {
+      TUIToast.success({ message: '邀请成功' });
+    }
+    isInviteDialogVisible.value = false;
+    inviteUserIds.value = '';
+  } catch (error: any) {
+    TUIToast.error({ message: error?.message || '邀请失败' });
+  } finally {
+    inviteLoading.value = false;
+  }
+};
 
 // Close sidebar when switching conversations
 watch(() => activeConversation.value?.conversationID, (newVal, oldVal) => {
@@ -132,8 +166,41 @@ const enterChat = () => {
             ✕
           </button>
         </div>
+        <button
+          v-if="isGroupChat"
+          class="invite-member-button"
+          @click="isInviteDialogVisible = true"
+        >
+          + 邀请成员（输入 ID）
+        </button>
         <ChatSetting />
       </div>
+
+      <TUIDialog
+        appendTo="body"
+        :visible="isInviteDialogVisible"
+        title="邀请成员"
+        confirm-text="邀请"
+        cancel-text="取消"
+        @confirm="handleInviteMembers"
+        @cancel="isInviteDialogVisible = false; inviteUserIds = ''"
+        @close="isInviteDialogVisible = false; inviteUserIds = ''"
+      >
+        <div class="invite-dialog-content">
+          <p class="invite-dialog-hint">
+            输入用户 ID，多个用逗号分隔，可添加非好友用户（如机器人）。
+          </p>
+          <TUIInput
+            v-model="inviteUserIds"
+            :disabled="inviteLoading"
+            placeholder="例如 @RBT#001, user123"
+            @keydown.enter.prevent="handleInviteMembers"
+          />
+          <p v-if="inviteLoading" class="invite-dialog-status">
+            正在处理中，请稍候...
+          </p>
+        </div>
+      </TUIDialog>
 
       <!-- Search in Chat Sidebar -->
       <div
@@ -302,5 +369,43 @@ const enterChat = () => {
   font-size: 16px;
   font-weight: 500;
   color: var(--text-color-primary);
+}
+
+.invite-member-button {
+  margin: 8px 16px;
+  padding: 8px 12px;
+  border: 1px dashed var(--stroke-color-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+    background-color: rgba(37, 99, 235, 0.04);
+  }
+}
+
+.invite-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+}
+
+.invite-dialog-hint {
+  margin: 0;
+  color: var(--text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.invite-dialog-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-color-secondary);
 }
 </style>
