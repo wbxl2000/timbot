@@ -1,0 +1,1 @@
+<view class="panel-box data-v-074b1297"><view class="panel-item data-v-074b1297" bindtap="{{b}}"><image class="panel-icon data-v-074b1297" src="{{a}}"></image></view><text class="panel-text data-v-074b1297">图片</text></view>

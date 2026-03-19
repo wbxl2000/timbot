@@ -1,0 +1,1 @@
+<view class="panel-box data-v-a531ca1c"><view class="panel-item data-v-a531ca1c" bindtap="{{b}}"><image class="panel-icon data-v-a531ca1c" src="{{a}}"></image></view><text class="panel-text data-v-a531ca1c">拍照</text></view>

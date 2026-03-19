@@ -1,0 +1,66 @@
+@mixin scrollbar-base(
+  $width: 6px,
+  $height: 6px,
+  $track-color: transparent,
+  $thumb-color: var(--scroll-bar-color-default, rgba(144, 147, 153, 0.3)),
+  $thumb-hover-color: var(--scroll-bar-color-hover, rgba(144, 147, 153, 0.6)),
+  $border-radius: 4px
+) {
+  overflow: auto;
+
+  &::-webkit-scrollbar {
+    width: $width;
+    height: $height;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: $track-color;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: $thumb-color;
+    border-radius: $border-radius;
+
+    &:hover {
+      background-color: $thumb-hover-color;
+    }
+  }
+}
+
+@mixin scrollbar-default {
+  @include scrollbar-base();
+}
+
+@mixin scrollbar-thin {
+  @include scrollbar-base(
+    $width: 4px,
+    $height: 4px,
+    $border-radius: 2px
+  );
+}
+
+@mixin scrollbar-dark {
+  @include scrollbar-base(
+    $thumb-color: rgba(255, 255, 255, 0.2),
+    $thumb-hover-color: rgba(255, 255, 255, 0.3)
+  );
+}
+
+@mixin scrollbar-hidden {
+  overflow: auto;
+  -ms-overflow-style: none; // IE and Edge
+
+  &::-webkit-scrollbar {
+    display: none; // Webkit browsers
+  }
+
+  @supports (scrollbar-width: none) {
+    scrollbar-width: none; // Firefox
+  }
+}
+
+// touch device enhance
+@mixin scrollbar-touch-friendly {
+  -webkit-overflow-scrolling: touch;
+  @include scrollbar-thin();
+}

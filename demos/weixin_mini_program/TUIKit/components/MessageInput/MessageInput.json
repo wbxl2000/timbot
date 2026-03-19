@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "usingComponents": {
+    "image-picker": "./AttachmentPicker/CameraPicker",
+    "photo-picker": "./AttachmentPicker/PhotoPicker",
+    "user-picker": "../UserPicker/UserPicker"
+  }
+}

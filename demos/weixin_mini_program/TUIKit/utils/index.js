@@ -1,0 +1,2 @@
+"use strict";function n(t){return t.replace(/C2C/g,"")}function o(t){if(typeof t=="string")try{return!!JSON.parse(t)}catch{return!1}return!1}function a(t){return!t||!o(t)?t:JSON.parse(t)}function u(t){const r=Math.floor(t/60),e=t%60;return[r.toString().padStart(2,"0"),e.toString().padStart(2,"0")].join(":")}exports.JSONToObject=a;exports.formatDuration=u;exports.removeC2C=n;
+//# sourceMappingURL=../../../.sourcemap/mp-weixin/TUIKit/utils/index.js.map

@@ -1,0 +1,2 @@
+"use strict";const a=require("../tui-base.js");class t extends a.TUIBase{static getInstance(){return t.instance||(t.instance=new t),t.instance}reportFeature(e,s){var n;return(n=this.getEngine().chat)==null?void 0:n.callExperimentalAPI("statTUIKeyFeatures",{code:e,msg:s?`${e}-${s}`:""})}}exports.TUIReportService=t;
+//# sourceMappingURL=../../../../../.sourcemap/mp-weixin/TUIKit/states/chat-uikit-engine-lite/TUIReportService/tui-report.js.map

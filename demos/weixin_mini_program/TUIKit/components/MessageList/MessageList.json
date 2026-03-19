@@ -1,0 +1,13 @@
+{
+  "component": true,
+  "usingComponents": {
+    "avatar": "../Avatar/Avatar",
+    "text-message": "./Message/TextMessage",
+    "custom-message": "./Message/CustomMessage",
+    "image-message": "./Message/ImageMessage",
+    "video-message": "./Message/VideoMessage",
+    "group-tip-message": "./Message/GroupTipMessage",
+    "message-status": "./MessageStatus/MessageStatus",
+    "message-timestamp": "./MessageTimeDivider/MessageTimeDivider"
+  }
+}

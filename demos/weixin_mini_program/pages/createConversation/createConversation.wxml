@@ -1,0 +1,1 @@
+<view class="create-conversation-page data-v-846ac817"><user-picker wx:if="{{b}}" class="data-v-846ac817" bindconfirm="{{a}}" u-i="846ac817-0" bind:__l="__l" u-p="{{b}}"/><create-group wx:if="{{c}}" class="data-v-846ac817" bindclose="{{d}}" bindsubmit="{{e}}" u-i="846ac817-1" bind:__l="__l"/></view>

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "会话",
+  "usingComponents": {
+    "message-input": "../../TUIKit/components/MessageInput/MessageInput",
+    "message-list": "../../TUIKit/components/MessageList/MessageList"
+  }
+}

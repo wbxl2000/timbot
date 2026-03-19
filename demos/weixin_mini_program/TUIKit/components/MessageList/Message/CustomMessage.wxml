@@ -1,0 +1,1 @@
+<view class="{{['bubble', 'data-v-0a244203', f && 'bubble-me']}}"><view wx:if="{{a}}" class="data-v-0a244203" bindtap="{{d}}" style="display:flex;align-items:center"><image class="callMessage-icon data-v-0a244203" src="{{b}}"/><text class="text data-v-0a244203">{{c}}</text></view><view wx:else class="data-v-0a244203"><text class="text data-v-0a244203">{{e}}</text></view></view>
