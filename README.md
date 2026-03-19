@@ -21,6 +21,11 @@ Local testing, streaming mode selection, and webhook replay examples are documen
 
 ## Changelog
 
+### 2026.3.19
+
+- fix: 群聊多机器人路由匹配（`AtRobots_Account`）
+- feat: Web Demo 支持添加非好友成员入群
+
 ### 2026.3.12
 
 - docs: 补充流式模式依赖上游 partial 输出的说明与可观测性日志
