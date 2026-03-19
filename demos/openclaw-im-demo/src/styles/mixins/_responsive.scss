@@ -1,0 +1,233 @@
+@use "sass:map";
+
+// Responsive breakpoint variables
+$breakpoints: (
+  mobile: 0,
+  tablet: 768px,
+  desktop: 1024px,
+  large-desktop: 1440px,
+  xl-desktop: 1920px,
+);
+
+// Mobile-first responsive mixin
+@mixin respond-to($breakpoint) {
+  @if map.has-key($breakpoints, $breakpoint) {
+    $value: map.get($breakpoints, $breakpoint);
+
+    @if $value == 0 {
+      // mobile breakpoint, default styles (mobile-first)
+      @content;
+    } @else {
+      // other breakpoints, use min-width media queries
+      @media (min-width: $value) {
+        @content;
+      }
+    }
+  } @else {
+    @warn "Unknown breakpoint: #{$breakpoint}. Available breakpoints: #{map-keys($breakpoints)}";
+  }
+}
+
+// Convenient breakpoint mixins
+@mixin mobile {
+  @include respond-to(mobile) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @include respond-to(tablet) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @include respond-to(desktop) {
+    @content;
+  }
+}
+
+@mixin large-desktop {
+  @include respond-to(large-desktop) {
+    @content;
+  }
+}
+
+@mixin xl-desktop {
+  @include respond-to(xl-desktop) {
+    @content;
+  }
+}
+
+// Range breakpoint mixin (for specific ranges)
+@mixin respond-between($min, $max) {
+  @if map.has-key($breakpoints, $min) and map.has-key($breakpoints, $max) {
+    $min-value: map.get($breakpoints, $min);
+    $max-value: map.get($breakpoints, $max);
+
+    @if $min-value == 0 {
+      @media (max-width: $max-value - 1px) {
+        @content;
+      }
+    } @else {
+      @media (min-width: $min-value) and (max-width: $max-value - 1px) {
+        @content;
+      }
+    }
+  } @else {
+    @warn "Unknown breakpoint range: #{$min} - #{$max}";
+  }
+}
+
+// Mobile only
+@mixin mobile-only {
+  @include respond-between(mobile, tablet) {
+    @content;
+  }
+}
+
+// Tablet only
+@mixin tablet-only {
+  @include respond-between(tablet, desktop) {
+    @content;
+  }
+}
+
+// Desktop only
+@mixin desktop-only {
+  @include respond-between(desktop, large-desktop) {
+    @content;
+  }
+}
+
+// XL desktop only
+@mixin xl-desktop-only {
+  @include respond-between(xl-desktop, large-desktop) {
+    @content;
+  }
+}
+
+// Tablet and up
+@mixin tablet-and-up {
+  @include respond-to(tablet) {
+    @content;
+  }
+}
+
+// Desktop and up
+@mixin desktop-and-up {
+  @include respond-to(desktop) {
+    @content;
+  }
+}
+
+// Large desktop and up
+@mixin large-desktop-and-up {
+  @include respond-to(large-desktop) {
+    @content;
+  }
+}
+
+// XL desktop and up
+@mixin xl-desktop-and-up {
+  @include respond-to(xl-desktop) {
+    @content;
+  }
+}
+
+// Utility function: get breakpoint value
+@function breakpoint($name) {
+  @if map-has-key($breakpoints, $name) {
+    @return map.get($breakpoints, $name);
+  } @else {
+    @warn "Unknown breakpoint: #{$name}";
+    @return null;
+  }
+}
+
+// Container mixin (for responsive containers)
+@mixin container($max-width: 1200px, $padding: 16px) {
+  width: 100%;
+  max-width: $max-width;
+  margin: 0 auto;
+  padding: 0 $padding;
+
+  @include respond-to(tablet) {
+    padding: 0 24px;
+  }
+
+  @include respond-to(desktop) {
+    padding: 0 32px;
+  }
+}
+
+// Grid system mixin
+@mixin grid($columns: 12, $gap: 16px) {
+  display: grid;
+  grid-template-columns: repeat($columns, 1fr);
+  gap: $gap;
+
+  @include respond-to(mobile) {
+    grid-template-columns: 1fr;
+    gap: $gap * 0.75;
+  }
+
+  @include respond-to(tablet) {
+    grid-template-columns: repeat(6, 1fr);
+    gap: $gap;
+  }
+
+  @include respond-to(desktop) {
+    grid-template-columns: repeat($columns, 1fr);
+    gap: $gap;
+  }
+}
+
+// Hide/show element mixins
+@mixin hide-on($breakpoint) {
+  @include respond-to($breakpoint) {
+    display: none !important;
+  }
+}
+
+@mixin show-on($breakpoint) {
+  display: none;
+
+  @include respond-to($breakpoint) {
+    display: block !important;
+  }
+}
+
+// Responsive text mixin
+@mixin responsive-text($mobile-size, $tablet-size: null, $desktop-size: null) {
+  font-size: $mobile-size;
+
+  @if $tablet-size {
+    @include respond-to(tablet) {
+      font-size: $tablet-size;
+    }
+  }
+
+  @if $desktop-size {
+    @include respond-to(desktop) {
+      font-size: $desktop-size;
+    }
+  }
+}
+
+// Responsive spacing mixin
+@mixin responsive-spacing($property, $mobile-value, $tablet-value: null, $desktop-value: null) {
+  #{$property}: $mobile-value;
+
+  @if $tablet-value {
+    @include respond-to(tablet) {
+      #{$property}: $tablet-value;
+    }
+  }
+
+  @if $desktop-value {
+    @include respond-to(desktop) {
+      #{$property}: $desktop-value;
+    }
+  }
+}

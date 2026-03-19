@@ -1,0 +1,34 @@
+{
+  "name": "rtcube-vite-vue3",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tencentcloud/call-uikit-vue": "^4.0.11",
+    "@tencentcloud/chat-uikit-vue3": "4.5.2",
+    "@tencentcloud/uikit-base-component-vue3": "1.3.1",
+    "@tencentcloud/universal-api": "2.4.0",
+    "pinia": "^2.2.1",
+    "tuikit-atomicx-vue3": "4.5.1",
+    "vue": "^3.5.18",
+    "vue-router": "4"
+  },
+  "devDependencies": {
+    "@tencentcloud/eslint-config-hybrid": "0.0.1",
+    "@types/node": "^25.3.3",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/tsconfig": "^0.7.0",
+    "eslint-import-resolver-alias": "^1.1.2",
+    "eslint-import-resolver-typescript": "^3.6.3",
+    "sass": "^1.96.0",
+    "typescript": "~5.8.3",
+    "vite": "^5.4.19",
+    "vite-plugin-vue-devtools": "^7.7.2",
+    "vue-tsc": "^3.0.5"
+  }
+}

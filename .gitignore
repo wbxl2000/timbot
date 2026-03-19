@@ -6,3 +6,7 @@ extensions/
 openclaw-src/
 .claude/
 openclaw-source-code/
+
+node_modules
+package-lock.json
+dist
